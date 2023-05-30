@@ -101,7 +101,6 @@ def forward_and_back(a: Arr, b: Arr, c: Arr) -> Tuple[Arr, Arr, Arr]:
 	'''
 	Calculates the output of the computational graph above (g), then backpropogates the gradients and returns dg/da, dg/db, and dg/dc
 	'''
-	
 	d = a * b
 	e = np.log(c)
 	f = d * e
@@ -254,7 +253,7 @@ class Tensor:
 
 	@property
 	def T(self) -> "Tensor":
-		return permute(self)
+		return permute(self, axes=(-1, -2))
 
 	def item(self):
 		return self.array.item()
@@ -375,7 +374,7 @@ if MAIN:
 # %%
 
 def multiply_forward(a: Union[Tensor, int], b: Union[Tensor, int]) -> Tensor:
-	'''Performs np.log on a Tensor object.'''
+	'''Performs np.multiply on a Tensor object.'''
 	assert isinstance(a, Tensor) or isinstance(b, Tensor)
 
 	
@@ -562,6 +561,19 @@ if MAIN:
 
 # %%
 
+
+if MAIN:
+	a = Tensor([1], requires_grad=True)
+	# a2 = Tensor([1], requires_grad=True)
+	b = a * 2
+	c = a * 1
+	d = b * c
+	name_lookup = {a: "a", b: "b", c: "c", d: "d"}
+	
+	print([name_lookup[t] for t in sorted_computational_graph(d)])
+
+# %%
+
 def backprop(end_node: Tensor, end_grad: Optional[Tensor] = None) -> None:
 	'''Accumulates gradients in the grad field of each leaf node.
 
@@ -644,7 +656,7 @@ if MAIN:
 
 def negative_back(grad_out: Arr, out: Arr, x: Arr) -> Arr:
 	'''Backward function for f(x) = -x elementwise.'''
-	return np.full_like(x, -1) * grad_out
+	return unbroadcast(-grad_out, x)
 
 
 
@@ -1123,7 +1135,8 @@ class Linear(Module):
 		x: shape (*, in_features)
 		Return: shape (*, out_features)
 		'''
-		out = x @ self.weight.permute((1, 0))
+		out = x @ self.weight.T
+		# Note, transpose has been defined as .permute(-1, -2) in the Tensor class
 		if self.bias is not None: 
 			out = out + self.bias
 		return out
@@ -1139,11 +1152,11 @@ if MAIN:
 	assert isinstance(linear.weight, Tensor)
 	assert linear.weight.requires_grad
 	
-	input = Tensor([1.0, 2.0, 3.0])
+	input = Tensor([[1.0, 2.0, 3.0]])
 	output = linear(input)
 	assert output.requires_grad
 	
-	expected_output = linear.weight @ input + linear.bias
+	expected_output = input @ linear.weight.T + linear.bias
 	np.testing.assert_allclose(output.array, expected_output.array)
 	
 	print("All tests for `Linear` passed!")

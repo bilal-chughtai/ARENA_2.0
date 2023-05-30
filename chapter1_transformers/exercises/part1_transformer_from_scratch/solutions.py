@@ -1,6 +1,7 @@
 # %%
 
-import os; os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+import os; os.environ['ACCELERATE_DISABLE_RICH'] = "1"
+# os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 import sys
 import einops
 from dataclasses import dataclass
@@ -12,7 +13,7 @@ import torch.nn as nn
 import numpy as np
 import math
 from tqdm.notebook import tqdm
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Dict
 from jaxtyping import Float, Int
 from transformers.models.gpt2.tokenization_gpt2_fast import GPT2TokenizerFast
 from collections import defaultdict
@@ -29,20 +30,15 @@ import webbrowser
 # Make sure exercises are in the path
 chapter = r"chapter1_transformers"
 exercises_dir = Path(f"{os.getcwd().split(chapter)[0]}/{chapter}/exercises").resolve()
-section_dir = exercises_dir / "part1_transformer_from_scratch"
+section_dir = (exercises_dir / "part1_transformer_from_scratch").resolve()
 if str(exercises_dir) not in sys.path: sys.path.append(str(exercises_dir))
 
 from plotly_utils import imshow
 # import part1_transformer_from_scratch.solutions as solutions
 
-# Add this to your workspace settings, so typechecker sees these modules:
-# "python.analysis.extraPaths": ["${workspaceFolder}/chapter1_transformers/exercises"]
-
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
 MAIN = __name__ == '__main__'
-
-# %%
 
 
 if MAIN:
@@ -64,7 +60,7 @@ if MAIN:
 
 
 if MAIN:
-	sorted_vocab[-20:]
+	print(sorted_vocab[-20:])
 
 # %%
 
@@ -79,7 +75,7 @@ if MAIN:
 
 
 if MAIN:
-	reference_gpt2.to_str_tokens("56873+3184623=123456789-1000000000")
+	print(reference_gpt2.to_str_tokens("56873+3184623=123456789-1000000000"))
 
 # %%
 
@@ -111,7 +107,7 @@ if MAIN:
 if MAIN:
 	most_likely_next_tokens = reference_gpt2.tokenizer.batch_decode(logits.argmax(dim=-1)[0])
 	
-	list(zip(reference_gpt2.to_str_tokens(tokens), most_likely_next_tokens))
+	print(list(zip(reference_gpt2.to_str_tokens(tokens), most_likely_next_tokens)))
 
 # %%
 
@@ -267,7 +263,6 @@ class PosEmbed(nn.Module):
 		nn.init.normal_(self.W_pos, std=self.cfg.init_range)
 
 	def forward(self, tokens: Int[Tensor, "batch position"]) -> Float[Tensor, "batch position d_model"]:
-		
 		batch, seq_len = tokens.shape
 		return einops.repeat(self.W_pos[:seq_len], "seq d_model -> batch seq d_model", batch=batch)
 
@@ -279,13 +274,15 @@ if MAIN:
 # %%
 
 import circuitsvis as cv
+from IPython.display import display
 
 
 if MAIN:
-	cv.attention.attention_patterns(
+	html = cv.attention.attention_patterns(
 		tokens=reference_gpt2.to_str_tokens(reference_text), 
 		attention=cache["pattern", 0][0]
 	)
+	display(html)
 
 # %%
 
@@ -312,7 +309,6 @@ class Attention(nn.Module):
 	def forward(
 		self, normalized_resid_pre: Float[Tensor, "batch posn d_model"]
 	) -> Float[Tensor, "batch posn d_model"]:
-
 		# Calculate query, key and value vectors
 		q = einops.einsum(
 			normalized_resid_pre, self.W_Q,
@@ -480,12 +476,8 @@ if MAIN:
 
 if MAIN:
 	demo_gpt2 = DemoTransformer(Config(debug=False)).to(device)
-	demo_gpt2.load_state_dict(reference_gpt2.state_dict(), strict=False);
-
-# %%
-
-
-if MAIN:
+	demo_gpt2.load_state_dict(reference_gpt2.state_dict(), strict=False)
+	
 	demo_logits = demo_gpt2(tokens)
 
 # %%
@@ -497,9 +489,10 @@ def get_log_probs(
 	
 	log_probs = logits.log_softmax(dim=-1)
 	# Get logprobs the first seq_len-1 predictions (so we can compare them with the actual next tokens)
-	log_probs_for_predicted_tokens = log_probs[:, :-1].gather(dim=-1, index=tokens[:, 1:].unsqueeze(-1)).squeeze(-1)
+	log_probs_for_tokens = log_probs[:, :-1].gather(dim=-1, index=tokens[:, 1:].unsqueeze(-1)).squeeze(-1)
 
-	return log_probs_for_predicted_tokens
+	return log_probs_for_tokens
+
 
 
 if MAIN:
@@ -512,7 +505,7 @@ if MAIN:
 
 
 if MAIN:
-	test_string = '''There is a theory which states that if ever anyone discovers exactly what the Universe is for and why it is here, it will instantly disappear and be replaced by something even more bizarre and inexplicable. There is another theory which states that'''
+	test_string = '''The Total Perspective Vortex derives its picture of the whole Universe on the principle of'''
 	for i in tqdm(range(100)):
 		test_tokens = reference_gpt2.to_tokens(test_string).to(device)
 		demo_logits = demo_gpt2(test_tokens)
@@ -548,10 +541,8 @@ class TransformerTrainingArgs():
 	weight_decay = 1e-2
 	log_dir: str = os.getcwd() + "/logs"
 	log_name: str = "day1-transformer"
+	run_name: Optional[str] = None
 	log_every_n_steps: int = 1
-
-	def __post_init__(self):
-		self.logger = WandbLogger(save_dir=self.log_dir, project=self.log_name)
 
 
 if MAIN:
@@ -591,7 +582,11 @@ class LitTransformer(pl.LightningModule):
 		self.args = args
 		self.data_loader = data_loader
 
-	def training_step(self, batch: Tuple[t.Tensor, t.Tensor], batch_idx: int) -> t.Tensor:
+	def forward(self, tokens: Int[Tensor, "batch position"]) -> Float[Tensor, "batch position d_vocab"]:
+		logits = self.model(tokens)
+		return logits
+
+	def training_step(self, batch: Dict[str, Tensor], batch_idx: int) -> Float[Tensor, ""]:
 		'''
 		Here you compute and return the training loss and some additional metrics for e.g. 
 		the progress bar or logger.
@@ -608,16 +603,20 @@ class LitTransformer(pl.LightningModule):
 		'''
 		optimizer = t.optim.AdamW(self.model.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 		return optimizer
+	
+	def train_dataloader(self):
+		return self.data_loader
 
 # %%
 
 
 if MAIN:
 	litmodel = LitTransformer(args, model, data_loader)
+	logger = WandbLogger(save_dir=args.log_dir, project=args.log_name, name=args.run_name)
 	
 	trainer = pl.Trainer(
 		max_epochs=args.max_epochs,
-		logger=args.logger,
+		logger=logger,
 		log_every_n_steps=args.log_every_n_steps
 	)
 	trainer.fit(model=litmodel, train_dataloaders=litmodel.data_loader)
@@ -699,6 +698,7 @@ class TransformerSampler:
 		return self.tokenizer.decode(input_ids)
 	
 	
+	
 	@t.inference_mode()
 	def beam_search(
 		self,
@@ -718,13 +718,13 @@ class TransformerSampler:
 		kwargs are passed to sample_next_token, to give detailed instructions on how 
 		new tokens are chosen.
 		'''
-		raise NotImplementedError()
+		pass
 	
 
 	@staticmethod
 	def sample_next_token(
-		input_ids: Int[Tensor, "d_vocab"], 
-		logits: Float[Tensor, "d_vocab"], 
+		input_ids: Int[Tensor, "seq_len"], 
+		logits: Float[Tensor, "seq_len d_vocab"], 
 		temperature=1.0, 
 		top_k=0, 
 		top_p=0.0, 
@@ -773,6 +773,7 @@ class TransformerSampler:
 		return logits / temperature
 	
 
+
 	@staticmethod
 	def apply_frequency_penalty(input_ids: Int[Tensor, "seq_len"], logits: Float[Tensor, "d_vocab"], freq_penalty: float) -> Float[Tensor, "d_vocab"]:
 		'''
@@ -782,6 +783,7 @@ class TransformerSampler:
 		id_freqs = t.bincount(input_ids, minlength=d_vocab)
 		return logits - freq_penalty * id_freqs
 	
+
 	
 	@staticmethod
 	def sample_basic(logits: Float[Tensor, "d_vocab"]) -> int:
@@ -791,6 +793,7 @@ class TransformerSampler:
 		sampled_token = t.distributions.categorical.Categorical(logits=logits).sample()
 		return sampled_token.item()
 	
+
 
 	@staticmethod
 	def sample_top_k(logits: Float[Tensor, "d_vocab"], k: int) -> int:
@@ -803,6 +806,7 @@ class TransformerSampler:
 		# Get the actual token id, as an int
 		return top_k_token_ids[sampled_token_idx].item()
 	
+
 
 	@staticmethod
 	def sample_top_p(logits: Float[Tensor, "d_vocab"], top_p: float, min_tokens_to_keep: int = 1) -> int:
@@ -855,7 +859,7 @@ if MAIN:
 	}
 	frequency_of_top_5 = defaultdict(int)
 	
-	N = 7500
+	N = 10_000
 	for _ in tqdm(range(N)):
 		token = TransformerSampler.sample_next_token(input_ids.squeeze(), logits)
 		frequency_of_top_5[tokenizer.decode(token)] += 1
@@ -1028,32 +1032,31 @@ class Beams:
 		]
 
 
-	def generate(self, new_beams: int, no_repeat_ngram_size: Optional[int] = None) -> "Beams":
+	def generate(self, toks_per_beam: int, no_repeat_ngram_size: Optional[int] = None) -> "Beams":
 		'''
 		Starting from the current set of beams (which has length `num_beams`), returns a new
-		set of `num_beams * new_beams`, containing the best `new_beams` continuations for each
+		set of `num_beams * toks_per_beam`, containing the best `toks_per_beam` continuations for each
 		of the original beams.
 
 		Optional argument `no_repeat_ngram_size` means your model won't generate any sequences with
-		a repeating n-gram of this length (don't worry about implementing this until later).
+		a repeating n-gram of this length.
 		'''
-
 		# Get the output logprobs for the next token (for every sequence in current beams)
 		logprobs: Tensor = self.model(self.tokens)[:, -1, :].log_softmax(-1)
 
-		# Get the top `new_beams` tokens for each sequence
-		# topk_logprobs, topk_tokenIDs = logprobs.topk(k=new_beams)
-		topk_logprobs, topk_tokenIDs = logprobs.topk(k=new_beams)
+		# Get the top `toks_per_beam` tokens for each sequence
+		# topk_logprobs, topk_tokenIDs = logprobs.topk(k=toks_per_beam)
+		topk_logprobs, topk_tokenIDs = self.get_topk_non_repeating(logprobs, no_repeat_ngram_size, k=toks_per_beam)
 
 		# Get all of the new possible beams, via einops operations
 		#   Here, we're effectively flattening out the batch dimension and k dimension, to give us tensors
 		#   with every possible combination of (original sequence, new token) pairs.)
 		new_logprob_sums = sum([
-			einops.repeat(self.logprob_sums, "batch -> (batch k)", k=new_beams),
+			einops.repeat(self.logprob_sums, "batch -> (batch k)", k=toks_per_beam),
 			einops.rearrange(topk_logprobs, "batch k -> (batch k)")
 		])
 		new_tokens = t.concat([
-			einops.repeat(self.tokens, "batch seq -> (batch k) seq", k=new_beams),
+			einops.repeat(self.tokens, "batch seq -> (batch k) seq", k=toks_per_beam),
 			einops.rearrange(topk_tokenIDs, "batch k -> (batch k) 1")
 		], dim=-1)
 		return self.new_beams(new_logprob_sums, new_tokens)
@@ -1069,7 +1072,6 @@ class Beams:
 				filtered version of self, containing all best `num_beams` which are also terminated.
 				i.e. the sum of lengths of these two should equal `num_beams`.
 		'''
-
 		# Get the indices of top `num_beams` beams
 		top_beam_indices = self.logprob_sums.topk(k=num_beams, dim=0).indices.tolist()
 		# Get the indices of terminated sequences
@@ -1097,6 +1099,49 @@ class Beams:
 				text = text[:int(0.3 * max_print_chars)] + " ... " + text[-int(0.7 * max_print_chars):]
 			table.add_row(f"{logprob_sum:>8.3f}", repr(text))
 		rprint(table)
+
+
+	def get_topk_non_repeating(
+		self,
+		logprobs: Float[Tensor, "batch d_vocab"], 
+		no_repeat_ngram_size: Optional[int],
+		k: int, 
+	) -> Tuple[Float[Tensor, "k"], Int[Tensor, "k"]]:
+		'''
+		logprobs: 
+			tensor of the log-probs for the next token
+		no_repeat_ngram_size:
+			size of ngram to avoid repeating
+		k:
+			number of top logits to return, for each beam in our collection
+
+		Returns:
+			equivalent to the output of `logprobs.topk(dim=-1)`, but makes sure
+			that no returned tokens would produce an ngram of size  `no_repeat_ngram_size`
+			which has already appeared in `self.tokens`.
+		'''
+		batch, seq_len = self.tokens.shape
+		neg_inf = t.tensor(-1.0e4).to(device)
+
+		# If completion isn't long enough for a repetition, or we have no restructions, just return topk
+		if (no_repeat_ngram_size is not None) and (seq_len > no_repeat_ngram_size-1):
+			# Otherwise, we need to check for ngram repetitions
+			# First, get the most recent `no_repeat_ngram_size-1` tokens
+			last_ngram_prefix = self.tokens[:, seq_len - (no_repeat_ngram_size-1):]
+			# Next, find all the tokens we're not allowed to generate (by going iterating through past ngrams and seeing if those ngram prefixes match the last one)
+			for i in range(seq_len - (no_repeat_ngram_size-1)):
+				ngrams = self.tokens[:, i:i+no_repeat_ngram_size] # (batch, ngram)
+				ngrams_are_repeated = (ngrams[:, :-1] == last_ngram_prefix).all(-1) # (batch,)
+				ngram_end_tokens = ngrams[:, [-1]] # (batch, 1)
+				# Fill logprobs with neginf wherever the ngrams are repeated
+				logprobs[range(batch), ngram_end_tokens] = t.where(
+					ngrams_are_repeated,
+					neg_inf,
+					logprobs[range(batch), ngram_end_tokens],
+			)
+
+		# Finally, get our actual tokens
+		return logprobs.topk(k=k, dim=-1)
 
 
 @t.inference_mode()
@@ -1133,10 +1178,10 @@ def beam_search(
 	for n in tqdm(range(max_new_tokens)):
 
 		# Generation step
-		best_beams = best_beams.generate(num_beams, no_repeat_ngram_size)
+		best_beams = best_beams.generate(toks_per_beam=num_beams, no_repeat_ngram_size=no_repeat_ngram_size)
 
 		# Filtering step
-		best_beams, best_beams_terminated = best_beams.filter(num_beams)
+		best_beams, best_beams_terminated = best_beams.filter(num_beams=num_beams)
 		final_logprobs_and_completions.extend(best_beams_terminated.logprobs_and_completions)
 
 		# Print output
@@ -1172,10 +1217,37 @@ if MAIN:
 
 
 if MAIN:
-	new_beams = beams.generate(2)
+	print("Testing generate, without no_repeat_ngram_size argument:")
+	new_beams = beams.generate(toks_per_beam=2)
 	new_beams.print()
+	assert new_beams.logprobs_and_completions[0][1] == "this is the third time"
+
+# %%
+
+
+if MAIN:
+	print("Testing generate, with no_repeat_ngram_size argument:")
 	
-	# Should get first row as [ -11.829 │ 'this is the third time' ]
+	bigram_beams = Beams(
+		model, 
+		tokenizer,
+		logprob_sums = t.tensor([-0.0]).to(device),
+		tokens = t.tensor([[530, 734, 530, 734]]).to(device)
+		# tokens are " one two one two"
+	)
+	
+	# With no_repeat_ngram_size=1, should not generate the token " one" or " two"
+	new_bigram_beams = bigram_beams.generate(toks_per_beam=3, no_repeat_ngram_size=1)
+	new_bigram_beams.print()
+	assert all([not (completion[1].endswith(" one") or completion[1].endswith(" two")) for completion in new_bigram_beams.logprobs_and_completions])
+	
+	# With no_repeat_ngram_size=2, it can generate " two" (which it should), but not " one"
+	new_bigram_beams = bigram_beams.generate(toks_per_beam=3, no_repeat_ngram_size=2)
+	new_bigram_beams.print()
+	assert all([not completion[1].endswith(" one") for completion in new_bigram_beams.logprobs_and_completions])
+	assert any([not completion[1].endswith(" two") for completion in new_bigram_beams.logprobs_and_completions])
+	
+	print("All tests for `generate` passed!")
 
 # %%
 
@@ -1194,6 +1266,8 @@ if MAIN:
 	t.testing.assert_close(best_beams.tokens, tokens[[0]])
 	
 	assert early_terminations.logprobs_and_completions == [(-2.0, "Stop" + tokenizer.eos_token)]
+	
+	print("All tests for `filter` passed!")
 
 # %%
 
@@ -1209,7 +1283,7 @@ if MAIN:
 	final_logitsums_and_completions = sampler.beam_search(
 		prompt=prompt, 
 		num_return_sequences=3,
-		num_beams=40,
+		toks_per_beam=40,
 		max_new_tokens=60, 
 		no_repeat_ngram_size=2,
 		verbose=False

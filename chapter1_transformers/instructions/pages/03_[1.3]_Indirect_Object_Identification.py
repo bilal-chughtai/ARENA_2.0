@@ -22,14 +22,10 @@ def section_0():
 
 <ul class="contents">
     <li class='margtop'><a class='contents-el' href='#introduction'>Introduction</a></li>
-    <li class='margtop'><a class='contents-el' href='#content-&-learning-objectives'>Content & Learning Objectives</a></li>
-    <li><ul class="contents">
-        <li><a class='contents-el' href='#110125-model-&-task-setup'>1️⃣ Model & Task Setup</a></li>
-        <li><a class='contents-el' href='#1010125-logit-attribution'>2️⃣ Logit Attribution</a></li>
-        <li><a class='contents-el' href='#12510125-activation-patching'>3️⃣ Activation Patching</a></li>
-        <li><a class='contents-el' href='#1010125-path-patching'>4️⃣ Path Patching</a></li>
-        <li><a class='contents-el' href='#1310125-bonus-/-exploring-anomalies'>5️⃣ Bonus / exploring anomalies</a></li>
-    </ul></li>
+    <li class='margtop'><a class='contents-el' href='#have-some-sense-of-proportion'>Have some sense of proportion</a></li>
+    <li class='margtop'><a class='contents-el' href='#the-ioi-task'>The IOI task</a></li>
+    <li class='margtop'><a class='contents-el' href='#keeping-track-of-your-guesses-predictions'>Keeping track of your guesses & predictions</a></li>
+    <li class='margtop'><a class='contents-el' href='#content-learning-objectives'>Content & Learning Objectives</a></li>
     <li class='margtop'><a class='contents-el' href='#setup'>Setup</a></li>
 </ul></li>""", unsafe_allow_html=True)
 
@@ -38,7 +34,11 @@ def section_0():
  <img src="https://raw.githubusercontent.com/callummcdougall/TransformerLens-intro/main/images/page_images/leaves.png" width="350">
 
 
-If you have any feedback on this course (e.g. bugs, confusing explanations, parts that you feel could be structured better), please let me know using [this Google Form](https://forms.gle/2ZhdHa87wWsrATjh9).
+Colab: [**exercises**](https://colab.research.google.com/drive/1M4F9SU_vHUUCQkhmtWnmY2eomOJu5B5s) | [**solutions**](https://colab.research.google.com/drive/1AA0wj2sHoZwtmy82WXORcZzk9urL1lVA)
+
+Please send any problems / bugs on the `#errata` channel in the [Slack group](https://join.slack.com/t/arena-la82367/shared_invite/zt-1uvoagohe-JUv9xB7Vr143pdx1UBPrzQ), and ask any questions on the dedicated channels for this chapter of material.
+
+You can toggle dark mode from the buttons on the top-right of this page.
 
 
 # Indirect Object Identification
@@ -46,145 +46,47 @@ If you have any feedback on this course (e.g. bugs, confusing explanations, part
 
 ## Introduction
 
-This notebook is built around the [Interpretability in the Wild](https://arxiv.org/abs/2211.00593) paper, in which the authors aim to understand the **indirect object identification circuit** in GPT-2 small. This circuit is resposible for the model's ability to complete sentences like `"John and Mary went to the shops, John gave a bag to"` with the correct token "`" Mary"`.
+This notebook / document is built around the [Interpretability in the Wild](https://arxiv.org/abs/2211.00593) paper, in which the authors aim to understand the **indirect object identification circuit** in GPT-2 small. This circuit is resposible for the model's ability to complete sentences like `"John and Mary went to the shops, John gave a bag to"` with the correct token "`" Mary"`.
 
-The notebook is loosely divided into different sections, each one with their own flavour. Sections 1, 2 & 3 are based on Neel Nanda's notebook [Exploratory_Analysis_Demo](https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/activation_patching_in_TL_demo.py.ipynb#scrollTo=uw7PmPbLuzVO). The flavour of these exercises is experimental and loose, with a focus on demonstrating what exploratory analysis looks like in practice with the transformerlens library. The code and exercises are simple and generic, but accompanied with a lot of detail about what each stage is doing, and why (plus several optional details and tangents). Section 4 introduces you to the idea of **path patching**, which is a more rigorous and structured way of analysing the model's behaviour. Here, you'll be replicating some of the results of the paper, which will serve to rigorously validate the insights gained from earlier sections. It's the most technically dense of all five sections. Lastly, section 5 contains a bit of both styles, and is much less structured (the focus is on providing you with avenues to go off and explore for yourself).
+It is loosely divided into different sections, each one with their own flavour. Sections 1, 2 & 3 are derived from Neel Nanda's notebook [Exploratory_Analysis_Demo](https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/activation_patching_in_TL_demo.py.ipynb#scrollTo=uw7PmPbLuzVO). The flavour of these exercises is experimental and loose, with a focus on demonstrating what exploratory analysis looks like in practice with the transformerlens library. They skimp on rigour, and instead try to speedrun the process of finding suggestive evidence for this circuit. The code and exercises are simple and generic, but accompanied with a lot of detail about what each stage is doing, and why (plus several optional details and tangents). Section 4 introduces you to the idea of **path patching**, which is a more rigorous and structured way of analysing the model's behaviour. Here, you'll be replicating some of the results of the paper, which will serve to rigorously validate the insights gained from earlier sections. It's the most technically dense of all five sections. Lastly, sections 5 & 6 are much less structured, and have a stronger focus on open-ended exercises & letting you go off and explore for yourself.
 
-*Note - this notebook has some quite heavy memory usage. If you find yourself getting frequent CUDA memory errors, you can periodically call `torch.cuda.empty_cache()` to [free up some memory](https://stackoverflow.com/questions/57858433/how-to-clear-gpu-memory-after-pytorch-model-training-without-restarting-kernel).*
+Which exercises you want to do will depend on what you're hoping to get out of these exercises. For example:
 
+* You want to understand activation patching - **1, 2, 3**
+* You want to get a sense of how to do exploratory analysis on a model - **1, 2, 3**
+* You want to understand activation and path patching - **1, 2, 3, 4**
+* You want to understand the IOI circuit fully, and replicate the paper's key results - **1, 2, 3, 4, 5**
+* You want to understand the IOI circuit fully, and replicate the paper's key results (but you already understand activation patching) - **1, 2, 4, 5**
+* You want to understand IOI, and then dive deeper e.g. by looking for more circuits in models or investigating anomalies - **1, 2, 3, 4, 5, 6**
 
-## Content & Learning Objectives
+*Note - if you find yourself getting frequent CUDA memory errors, you can periodically call `torch.cuda.empty_cache()` to [free up some memory](https://stackoverflow.com/questions/57858433/how-to-clear-gpu-memory-after-pytorch-model-training-without-restarting-kernel).*
 
-
-### 1️⃣ Model & Task Setup
-
-> ##### Learning objectives
-> 
-> * Understand the IOI task, and why the authors chose to study it
-> * Build functions to demonstrate the model's performance on this task
-
-### 2️⃣ Logit Attribution
-
-> ##### Learning objectives
-> 
-> * Perform direct logit attribution to figure out which heads are writing to the residual stream in a significant way
-> * Learn how to use different transformerlens helper functions, which decompose the residual stream in different ways
-
-### 3️⃣ Activation Patching
-
-> ##### Learning objectives
-> 
-> * Understand the idea of activation patching, and how it can be used
->     * Implement some of the activation patching helper functinos in transformerlens from scratch (i.e. using hooks)
-> * Use activation patching to track the layers & sequence positions in the residual stream where important information is stored and processed
-> * By the end of this section, you should be able to draw a rough sketch of the IOI circuit
-
-### 4️⃣ Path Patching
-
-> ##### Learning objectives
-> 
-> * Understand the idea of path patching, and how it differs from activation patching
-> * Implement path patching from scratch (i.e. using hooks)
-> * Replicate several of the results in the [IOI paper](https://arxiv.org/abs/2211.00593)
-
-### 5️⃣ Bonus / exploring anomalies
-
-> ##### Learning objectives
-> 
-> * Explore other parts of the model (e.g. negative name mover heads, and induction heads)
-> * Understand the subtleties present in model circuits, and the fact that there are often more parts to a circuit than seem obvious after initial investigation
-> * Understand the importance of the three quantitative criteria used by the paper: **faithfulness**, **completeness** and **minimality**
+Each exercise will have a difficulty and importance rating out of 5, as well as an estimated maximum time you should spend on these exercises and sometimes a short annotation. You should interpret the ratings & time estimates relatively (e.g. if you find yourself spending about 50% longer on the exercises than the time estimates, adjust accordingly). Please do skip exercises / look at solutions if you don't feel like they're important enough to be worth doing, and you'd rather get to the good stuff!
 
 
-## Setup
+## Have some sense of proportion
+
+At a surface level, these exercises are designed to take you through the indirect object identification circuit. But it's also designed to make you a better interpretability researcher! As a result, most exercises will be doing a combination of:
+
+1. Showing you some new feature/component of the circuit, and
+2. Teaching you how to use tools and interpret results in a broader mech interp context.
+
+Here is a rough conceptual graph showing all the different things you should be thinking about when going through these exercises, and how they relate to both of these goals, as well all the `transformerlens` tools which will help you.
+
+<img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/ioi-map-simpler.png" width="1100">
+
+A key idea to have in mind during these exercises is the spectrum from simpler, more exploratory tools to more rigoruous, complex tools. On the far left, you have something like inspecting attention patterns, which can give a decent (but sometimes misleading) picture of what an attention head is doing. These should be some of the first tools you reach for, and you should be using them a lot even before you have concrete hypotheses about a circuit. On the far right, you have something like path patching, which is a pretty rigorous and effortful tool that is best used when you already have reasonably concrete hypotheses about a circuit. As we go through the exercises, we'll transition from left to right along this spectrum.
 
 
-```python
-import os; os.environ["ACCELERATE_DISABLE_RICH"] = "1"
-import sys
-from pathlib import Path
-import torch as t
-from torch import Tensor
-import numpy as np
-import einops
-from tqdm.notebook import tqdm
-import plotly.express as px
-import webbrowser
-import re
-import itertools
-from jaxtyping import Float, Int, Bool
-from typing import List, Optional, Callable, Tuple, Dict, Literal, Set
-from functools import partial
-from IPython.display import display, HTML
-from rich.table import Table, Column
-from rich import print as rprint
-import circuitsvis as cv
-from pathlib import Path
-from transformer_lens.hook_points import HookPoint
-from transformer_lens import utils, HookedTransformer, ActivationCache
-from transformer_lens.components import Embed, Unembed, LayerNorm, MLP
+## The IOI task
 
-t.set_grad_enabled(False)
+The first step when trying to reverse engineer a circuit in a model is to identify *what* capability we want to reverse engineer. Indirect Object Identification is a task studied in Redwood Research's excellent [Interpretability in the Wild](https://arxiv.org/abs/2211.00593) paper (see [Neel Nanda's interview with the authors](https://www.youtube.com/watch?v=gzwj0jWbvbo) or [Kevin Wang's Twitter thread](https://threadreaderapp.com/thread/1587601532639494146.html) for an overview). The task is to complete sentences like "When Mary and John went to the store, John gave a drink to" with " Mary" rather than " John".
 
-# Make sure exercises are in the path
-chapter = r"chapter1_transformers"
-exercises_dir = Path(f"{os.getcwd().split(chapter)[0]}/{chapter}/exercises").resolve()
-section_dir = exercises_dir / "part3_indirect_object_identification"
-if str(exercises_dir) not in sys.path: sys.path.append(str(exercises_dir))
-
-from plotly_utils import imshow, line, scatter, bar
-import part3_indirect_object_identification.tests as tests
-
-device = t.device("cuda") if t.cuda.is_available() else t.device("cpu")
-
-MAIN = __name__ == "__main__"
-
-```
-
-
-
-""", unsafe_allow_html=True)
-
-
-def section_1():
-
-    st.sidebar.markdown(r"""
-
-## Table of Contents
-
-<ul class="contents">
-    <li class='margtop'><a class='contents-el' href='#indirect-object-identification'>Indirect Object Identification</a></li>
-    <li class='margtop'><a class='contents-el' href='#keeping-track-of-your-guesses-&-predictions'>Keeping track of your guesses & predictions</a></li>
-    <li class='margtop'><a class='contents-el' href='#loading-our-model'>Loading our model</a></li>
-    <li class='margtop'><a class='contents-el' href='#exercise-implement-the-performance-evaluation-function'><b>Exercise</b> - implement the performance evaluation function</a></li>
-    <li class='margtop'><a class='contents-el' href='#brainstorm-what's-actually-going-on'>Brainstorm What's Actually Going On</a></li>
-</ul></li>""", unsafe_allow_html=True)
-
-    st.markdown(r"""
-
-# 1️⃣ Model & Task Setup
-
-
-> ##### Learning objectives
-> 
-> * Understand the IOI task, and why the authors chose to study it
-> * Build functions to demonstrate the model's performance on this task
-
-
-## Indirect Object Identification
-
-
-
-The first step when trying to reverse engineer a circuit in a model is to identify *what* capability I want to reverse engineer. Indirect Object Identification is a task studied in Redwood Research's excellent [Interpretability in the Wild](https://arxiv.org/abs/2211.00593) paper (see [my interview with the authors](https://www.youtube.com/watch?v=gzwj0jWbvbo) or [Kevin Wang's Twitter thread](https://threadreaderapp.com/thread/1587601532639494146.html) for an overview). The task is to complete sentences like "When Mary and John went to the store, John gave a drink to" with " Mary" rather than " John".
-
-In the paper they rigorously reverse engineer a 26 head circuit, with 7 separate categories of heads used to perform this capability. Their rigorous methods are fairly involved, so in this notebook, I'm going to skimp on rigour and instead try to speedrun the process of finding suggestive evidence for this circuit!
-
-The circuit they found roughly breaks down into three parts:
+In the paper they rigorously reverse engineer a 26 head circuit, with 7 separate categories of heads used to perform this capability. The circuit they found roughly breaks down into three parts:
 
 1. Identify what names are in the sentence
 2. Identify which names are duplicated
 3. Predict the name that is *not* duplicated
-
 
 Why was this task chosen? The authors give a very good explanation for their choice in their [video walkthrough of their paper](https://www.youtube.com/watch?v=gzwj0jWbvbo), which you are encouraged to watch. To be brief, some of the reasons were:
 
@@ -192,24 +94,19 @@ Why was this task chosen? The authors give a very good explanation for their cho
 * It's easy to measure: the model always puts a much higher probability on the IO and S tokens (i.e. `" Mary"` and `" John"`) than any others, and this is especially true once the model starts being stripped down to the core part of the circuit we're studying. So we can just take the logit difference between these two tokens, and use this as a metric for how well the model can solve the task.
 * It is a crisp and well-defined task, so less likely to be solved in terms of memorisation of a large bag of heuristics (unlike e.g. tasks like "predict that the number `n+1` will follow `n`, which as Neel mentions in the video walkthrough is actually much more annoying and subtle than it first seems!).
 
-
 A terminology note: `IO` will refer to the indirect object (in the example, `" Mary"`), `S1` and `S2` will refer to the two instances of the subject token (i.e. `" John"`), and `end` will refer to the end token `" to"` (because this is the position we take our prediction from, and we don't care about any tokens after this point). We will also sometimes use `S` to refer to the identity of the subject token (rather than referring to the first or second instance in particular).
 
 
 ## Keeping track of your guesses & predictions
 
-
 There's a lot to keep track of in these exercises as we work through them. You'll be exposed to new functions and modules from transformerlens, new ways to causally intervene in models, all the while building up your understanding of how the IOI task is performed. The notebook starts off exploratory in nature (lots of plotting and investigation), and gradually moves into more technical details, refined analysis, and replication of the paper's results, as we improve our understanding of the IOI circuit. You are recommended to keep a document or page of notes nearby as you go through these exercises, so you can keep track of the main takeaways from each section, as well as your hypotheses for how the model performs the task, and your ideas for how you might go off and test these hypotheses on your own if the notebook were to suddenly end.
 
 If you are feeling extremely confused at any point, you can come back to the dropdown below, which contains diagrams explaining how the circuit works. There is also an accompanying intuitive explanation which you might find more helpful. However, I'd recommend you try and go through the notebook unassisted before looking at these.
 
-
-
-
 <details>
 <summary>Intuitive explanation of IOI circuit</summary>
 
-First, let's start with an analogy for how transformers work. Imagine a line of people, who can only look forward. Each person has a token written on their chest, and their goal is to figure out what token the person in front of them is holding. Each person is allowed to pass a question backwards along the line (not forwards), and anyone can choose to reply to that question by passing information forwards to the person who asked. In this case, the sentence is `"When Mary and John went to the store, John gave a drink to Mary"`. You are the person holding the `" to"` token, and your goal is to figure out that the person in front of him has the `" Mary"` token.
+First, let's start with an analogy for how transformers work (you can skip this if you've already read [my post](https://www.lesswrong.com/posts/euam65XjigaCJQkcN/an-analogy-for-understanding-transformers)). Imagine a line of people, who can only look forward. Each person has a token written on their chest, and their goal is to figure out what token the person in front of them is holding. Each person is allowed to pass a question backwards along the line (not forwards), and anyone can choose to reply to that question by passing information forwards to the person who asked. In this case, the sentence is `"When Mary and John went to the store, John gave a drink to Mary"`. You are the person holding the `" to"` token, and your goal is to figure out that the person in front of him has the `" Mary"` token.
 
 To be clear about how this analogy relates to transformers:
 * Each person in the line represents a vector in the residual stream. Initially they just store their own token, but they accrue more information as they ask questions and receive answers (i.e. as components write to the residual stream)
@@ -253,6 +150,129 @@ This is a fine first-pass understanding of how the circuit works. A few other fe
 <img src="https://raw.githubusercontent.com/callummcdougall/computational-thread-art/master/example_images/misc/ioi-main-full-d.png" width="1250">
 
 </details>
+
+
+## Content & Learning Objectives
+
+
+#### 1️⃣ Model & Task Setup
+
+> ##### Learning objectives
+> 
+> * Understand the IOI task, and why the authors chose to study it
+> * Build functions to demonstrate the model's performance on this task
+
+#### 2️⃣ Logit Attribution
+
+> ##### Learning objectives
+> 
+> * Perform direct logit attribution to figure out which heads are writing to the residual stream in a significant way
+> * Learn how to use different transformerlens helper functions, which decompose the residual stream in different ways
+
+#### 3️⃣ Activation Patching
+
+> ##### Learning objectives
+> 
+> * Understand the idea of activation patching, and how it can be used
+>     * Implement some of the activation patching helper functinos in transformerlens from scratch (i.e. using hooks)
+> * Use activation patching to track the layers & sequence positions in the residual stream where important information is stored and processed
+> * By the end of this section, you should be able to draw a rough sketch of the IOI circuit
+
+#### 4️⃣ Path Patching
+
+> ##### Learning objectives
+> 
+> * Understand the idea of path patching, and how it differs from activation patching
+> * Implement path patching from scratch (i.e. using hooks)
+> * Replicate several of the results in the [IOI paper](https://arxiv.org/abs/2211.00593)
+
+#### 5️⃣ Paper Replication
+
+> ##### Learning objectives
+> 
+> * Replicate most of the other results from the [IOI paper](https://arxiv.org/abs/2211.00593)
+> * Practice more open-ended, less guided coding
+
+#### 6️⃣ Bonus / exploring anomalies
+
+> ##### Learning objectives
+> 
+> * Explore other parts of the model (e.g. negative name mover heads, and induction heads)
+> * Understand the subtleties present in model circuits, and the fact that there are often more parts to a circuit than seem obvious after initial investigation
+> * Understand the importance of the three quantitative criteria used by the paper: **faithfulness**, **completeness** and **minimality**
+
+
+## Setup
+
+
+```python
+import os; os.environ["ACCELERATE_DISABLE_RICH"] = "1"
+import sys
+from pathlib import Path
+import torch as t
+from torch import Tensor
+import numpy as np
+import einops
+from tqdm.notebook import tqdm
+import plotly.express as px
+import webbrowser
+import re
+import itertools
+from jaxtyping import Float, Int, Bool
+from typing import List, Optional, Callable, Tuple, Dict, Literal, Set
+from functools import partial
+from IPython.display import display, HTML
+from rich.table import Table, Column
+from rich import print as rprint
+import circuitsvis as cv
+from pathlib import Path
+from transformer_lens.hook_points import HookPoint
+from transformer_lens import utils, HookedTransformer, ActivationCache
+from transformer_lens.components import Embed, Unembed, LayerNorm, MLP
+
+t.set_grad_enabled(False)
+
+# Make sure exercises are in the path
+chapter = r"chapter1_transformers"
+exercises_dir = Path(f"{os.getcwd().split(chapter)[0]}/{chapter}/exercises").resolve()
+section_dir = (exercises_dir / "part3_indirect_object_identification").resolve()
+if str(exercises_dir) not in sys.path: sys.path.append(str(exercises_dir))
+
+from plotly_utils import imshow, line, scatter, bar
+import part3_indirect_object_identification.tests as tests
+
+device = t.device("cuda") if t.cuda.is_available() else t.device("cpu")
+
+MAIN = __name__ == "__main__"
+
+```
+
+
+
+""", unsafe_allow_html=True)
+
+
+def section_1():
+
+    st.sidebar.markdown(r"""
+
+## Table of Contents
+
+<ul class="contents">
+    <li class='margtop'><a class='contents-el' href='#loading-our-model'>Loading our model</a></li>
+    <li class='margtop'><a class='contents-el' href='#exercise-implement-the-performance-evaluation-function'><b>Exercise</b> - implement the performance evaluation function</a></li>
+    <li class='margtop'><a class='contents-el' href='#brainstorm-what's-actually-going-on'>Brainstorm What's Actually Going On</a></li>
+</ul></li>""", unsafe_allow_html=True)
+
+    st.markdown(r"""
+
+# 1️⃣ Model & Task Setup
+
+
+> ##### Learning objectives
+> 
+> * Understand the IOI task, and why the authors chose to study it
+> * Build functions to demonstrate the model's performance on this task
 
 
 ## Loading our model
@@ -426,6 +446,15 @@ We'll later be evaluating how model performance differs upon performing various 
 
 ## Exercise - implement the performance evaluation function
 
+```c
+Difficulty: 🟠🟠🟠⚪⚪
+Importance: 🟠🟠🟠🟠⚪
+
+You should spend up to 10-15 minutes on this exercise.
+
+It's important to understand exactly what this function is computing, and why it matters.
+```
+
 This function should take in your model's logit output (shape `(batch, seq, d_vocab)`), and the array of answer tokens (shape `(batch, 2)`, containing the token ids of correct and incorrect answers respectively for each sequence), and return the logit difference as described above. If `per_prompt` is False, then it should take the mean over the batch dimension, if not then it should return an array of length `batch`.
 
 
@@ -442,6 +471,27 @@ def logits_to_ave_logit_diff(
     '''
     pass
 
+
+if MAIN:
+    tests.test_logits_to_ave_logit_diff(logits_to_ave_logit_diff)
+    
+    original_per_prompt_diff = logits_to_ave_logit_diff(original_logits, answer_tokens, per_prompt=True)
+    print("Per prompt logit difference:", original_per_prompt_diff)
+    original_average_logit_diff = logits_to_ave_logit_diff(original_logits, answer_tokens)
+    print("Average logit difference:", original_average_logit_diff)
+    
+    cols = [
+        "Prompt", 
+        Column("Correct", style="rgb(0,200,0) bold"), 
+        Column("Incorrect", style="rgb(255,0,0) bold"), 
+        Column("Logit Difference", style="bold")
+    ]
+    table = Table(*cols, title="Logit differences")
+    
+    for prompt, answer, logit_diff in zip(prompts, answers, original_per_prompt_diff):
+        table.add_row(prompt, repr(answer[0]), repr(answer[1]), f"{logit_diff.item():.3f}")
+    
+    rprint(table)
 
 ```
 
@@ -469,40 +519,9 @@ def logits_to_ave_logit_diff(
     correct_logits, incorrect_logits = answer_logits.unbind(dim=-1)
     answer_logit_diff = correct_logits - incorrect_logits
     return answer_logit_diff if per_prompt else answer_logit_diff.mean()
-
-
-# tests.test_logits_to_ave_logit_diff(logits_to_ave_logit_diff)
 ```
 </details>
 
-
-```python
-
-if MAIN:
-    original_per_prompt_diff = logits_to_ave_logit_diff(original_logits, answer_tokens, per_prompt=True)
-    print("Per prompt logit difference:", original_per_prompt_diff)
-    original_average_logit_diff = logits_to_ave_logit_diff(original_logits, answer_tokens)
-    print("Average logit difference:", original_average_logit_diff)
-
-```
-
-```python
-
-if MAIN:
-    cols = [
-        "Prompt", 
-        Column("Correct", style="rgb(0,200,0) bold"), 
-        Column("Incorrect", style="rgb(255,0,0) bold"), 
-        Column("Logit Difference", style="bold")
-    ]
-    table = Table(*cols, title="Logit differences")
-    
-    for prompt, answer, logit_diff in zip(prompts, answers, original_per_prompt_diff):
-        table.add_row(prompt, repr(answer[0]), repr(answer[1]), f"{logit_diff.item():.3f}")
-    
-    rprint(table)
-
-```
 
 ## Brainstorm What's Actually Going On
 
@@ -603,15 +622,27 @@ Logit difference is actually a *really* nice and elegant metric and is a particu
 
 The logits are much nicer and easier to understand, as noted above. However, the model is trained to optimize the cross-entropy loss (the average of log probability of the correct token). This means it does not directly optimize the logits, and indeed if the model adds an arbitrary constant to every logit, the log probabilities are unchanged.
 
-But `log_probs == logits.log_softmax(dim=-1) == logits - logsumexp(logits)`, and so `log_probs(" Mary") - log_probs(" John") = logits(" Mary") - logits(" John")` - the ability to add an arbitrary constant cancels out!
+But we have:
+
+```
+log_probs == logits.log_softmax(dim=-1) == logits - logsumexp(logits)
+```
+
+and so:
+
+```
+log_probs(" Mary") - log_probs(" John") = logits(" Mary") - logits(" John")
+```
+
+- the ability to add an arbitrary constant cancels out!
 
 <details>
 <summary>Technical details (if this equivalence doesn't seem obvious to you)</summary>
 
-Let $\underline{\textbf{x}}$ be the logits, $\underline{\textbf{L}}$ be the log probs, and $\underline{\textbf{p}}$ be the probs. Then we have the following relations:
+Let $\vec{\textbf{x}}$ be the logits, $\vec{\textbf{L}}$ be the log probs, and $\vec{\textbf{p}}$ be the probs. Then we have the following relations:
 
 $$
-p_i = \operatorname{softmax}(\underline{\textbf{x}})_i = \frac{e^{x_i}}{\sum_{i=1}^n e^{x_i}}
+p_i = \operatorname{softmax}(\vec{\textbf{x}})_i = \frac{e^{x_i}}{\sum_{i=1}^n e^{x_i}}
 $$
 
 and:
@@ -623,7 +654,7 @@ $$
 Combining these, we get:
 
 $$
-L_i = \log \frac{e^{x_i}}{\sum_{i=1}^n e^{x_i}} = x_i - \log \sum_{i=1}^n e^{x_i}
+L_i = \log \frac{e^{x_i}}{\sum_{j=1}^n e^{x_j}} = x_i - \log \sum_{j=1}^n e^{x_j}
 $$
 
 Notice that the sum term on the right hand side is the same for all $i$, so we get:
@@ -664,19 +695,18 @@ $$
 \text{output} = x^T W_U
 $$
 
-Now, remember that we want the logit diff, which is $output_{IO} - output_{S}$ (the difference between the logits for our indirect object and subject). We can write this as:
+Now, remember that we want the logit diff, which is $\text{output}_{IO} - \text{output}_{S}$ (the difference between the logits for our indirect object and subject). We can write this as:
 
 $$
 \text{logit diff} = (x^T W_U)_{IO} - (x^T W_U)_{S} = x^T (u_{IO} - u_{S})
 $$
 
-where $u_{IO}$ and $u_S$ are the columns of the unembedding matrix $W_U$ corresponding to the indirect object and subject tokens respectively.
+where $u_{IO}$ and $u_S$ are the **columns of the unembedding matrix** $W_U$ corresponding to the indirect object and subject tokens respectively.
 
-To summarize, we've written the logit diff as a dot product between the vector in the residual stream and a constant vector (which is a function of the model's unembedding matrix). We call this vector $u_{IO} - u_{S}$ the **logit difference direction** (because it "points in the direction of largest logit difference"). To put it another way, if $x$ is a vector of fixed magnitude, then it maximises the logit difference when it is pointing in the same direction as the vector $u_{IO} - u_{S}$. We use the term "projection" synonymously with "dot product" here.
+To summarize, we've written the logit diff as a dot product between the vector in the residual stream and a constant vector (which is a function of the model's unembedding matrix). We call this vector $u_{IO} - u_{S}$ the **logit difference direction** (because it *"points in the direction of largest logit difference"*). To put it another way, if $x$ is a vector of fixed magnitude, then it maximises the logit difference when it is pointing in the same direction as the vector $u_{IO} - u_{S}$. We use the term "projection" synonymously with "dot product" here.
 
 (If you've completed the exercise where we interpret a transformer on balanced / unbalanced bracket strings, this is basically the same principle. The only difference here is that we actually have a much larger unembedding vocabulary than just the classifications `{balanced, unbalanced}`, but since we're only interested in comparing the model's prediction for IO vs S, and the logits for these two tokens are usually larger than most others, this method is still well-justified).
 </details>
-
 
 We use `model.tokens_to_residual_directions` to map the answer tokens to that direction, and then convert this to a logit difference direction for each batch
 
@@ -699,6 +729,13 @@ if MAIN:
 If you haven't seen type annotations being used in this way, I'd encourage it, because they're pretty handy! You can keep track of tensor sizes without worrying about re-printing everything (this is especially useful if you're working in a python file in VSCode rather than a notebook, since in a notebook it's fine to just leave cell output there as a reference). It's also handy for your typechecker, if you're using VSCode.
 
 Also note the use of `jaxtyping`, this is a better-maintained and [improved](https://github.com/nerfstudio-project/nerfstudio/issues/1171) version of the `tensortyping` library but works in basically the same way - you can see their documentation page [here](https://github.com/google/jaxtyping).
+
+Note - instead of doing this, you might prefer something like:
+
+```python
+answer_residual_directions = model.tokens_to_residual_directions(answer_tokens)
+# shape (batch, 2, d_model)
+```
 </details>
 
 To verify that this works, we can apply this to the final residual stream for our cached prompts (after applying LayerNorm scaling) and verify that we get the same answer.
@@ -740,7 +777,7 @@ if MAIN:
     scaled_final_token_residual_stream = cache.apply_ln_to_stack(final_token_residual_stream, layer=-1, pos_slice=-1)
     
     average_logit_diff = einops.einsum(
-        scaled_final_token_residual_stream, logit_diff_directions, 
+        scaled_final_token_residual_stream, logit_diff_directions,
         "batch d_model, batch d_model ->"
     ) / len(prompts)
     
@@ -758,6 +795,15 @@ We can now decompose the residual stream! First we apply a technique called the 
 
 
 ### Exercise - implement `residual_stack_to_logit_diff`
+
+```c
+Difficulty: 🟠🟠🟠⚪⚪
+Importance: 🟠🟠🟠⚪⚪
+
+You should spend up to 10-15 minutes on this exercise.
+
+Again, make sure you understand what the output of this function represents.
+```
 
 This function should look a lot like your code immediately above. `residual_stack` is a tensor of shape `(..., batch, d_model)` containing the residual stream values for the final sequence position. You should apply the final layernorm to these values, then project them in the logit difference directions.
 
@@ -782,6 +828,33 @@ if MAIN:
     )
 
 ```
+
+<details>
+<summary>Solution</summary>
+
+
+```python
+def residual_stack_to_logit_diff(
+    residual_stack: Float[Tensor, "... batch d_model"], 
+    cache: ActivationCache,
+    logit_diff_directions: Float[Tensor, "batch d_model"] = logit_diff_directions,
+) -> Float[Tensor, "..."]:
+    '''
+    Gets the avg logit difference between the correct and incorrect answer for a given 
+    stack of components in the residual stream.
+    '''
+    # SOLUTION
+    batch_size = residual_stack.size(-2)
+    scaled_residual_stack = cache.apply_ln_to_stack(residual_stack, layer=-1, pos_slice=-1)
+    return einops.einsum(
+        scaled_residual_stack, logit_diff_directions,
+        "... batch d_model, batch d_model -> ..."
+    ) / batch_size
+
+
+# Test function by checking that it gives the same result as the original logit difference
+```
+</details>
 
 Once you have the solution, you can plot your results.
 
@@ -928,7 +1001,10 @@ A common mistake to make when looking at attention patterns is thinking that the
 def topk_of_Nd_tensor(tensor: Float[Tensor, "rows cols"], k: int):
     '''
     Helper function: does same as tensor.topk(k).indices, but works over 2D tensors.
-    Returns a list of indices, i.e. shape (k, tensor.ndim).
+    Returns a list of indices, i.e. shape [k, tensor.ndim].
+
+    Example: if tensor is 2D array of values for each head in each layer, this will
+    return a list of heads.
     '''
     i = t.topk(tensor.flatten(), k).indices
     return np.array(np.unravel_index(utils.to_numpy(i), tensor.shape)).T.tolist()
@@ -963,7 +1039,6 @@ Reminder - you can use `attention_patterns` or `attention_heads` for these visua
 
 Try replacing `attention_patterns` above with `attention_heads`, and compare the output.
 
-
 <details>
 <summary>Help - my <code>attention_heads</code> plots are behaving weirdly.</summary>
 
@@ -988,7 +1063,6 @@ webbrowser.open(path)
 
 To check exactly where this is getting saved, you can print your current working directory with `os.getcwd()`.
 </details>
-
 
 From these plots, you might want to start thinking about the algorithm which is being implemented. In particular, for the attention heads with high positive attribution scores, where is `" to"` attending to? How might this head be affecting the logit diff score?
 
@@ -1148,12 +1222,7 @@ if MAIN:
         "Clean string 0:    ", model.to_string(clean_tokens[0]), "\n"
         "Corrupted string 0:", model.to_string(corrupted_tokens[0])
     )
-
-```
-
-```python
-
-if MAIN:
+    
     clean_logits, clean_cache = model.run_with_cache(clean_tokens)
     corrupted_logits, corrupted_cache = model.run_with_cache(corrupted_tokens)
     
@@ -1167,26 +1236,33 @@ if MAIN:
 
 ### Exercise - create a metric
 
+```c
+Difficulty: 🟠🟠⚪⚪⚪
+Importance: 🟠🟠🟠⚪⚪
+
+You should spend up to ~10 minutes on this exercise.
+```
+
 Fill in the function `ioi_metric` below, to create the required metric. Note that we can afford to use default arguments in this function, because we'll be using the same dataset for this whole section.
 
-Note - to be compatible with the functions in `transformer_lens.patching`, we should have our metric function return a tensor containing a single element. The type signature of this is `Float[Tensor, ""]`.
+**Important note** - this function needs to return a scalar tensor, rather than a float. If not, then some of the patching functions later on won't work. The type signature of this is `Float[Tensor, ""]`.
 
 
 ```python
-
-if MAIN:
-    def ioi_metric(
-        logits: Float[Tensor, "batch seq d_vocab"], 
-        answer_tokens: Float[Tensor, "batch 2"] = answer_tokens,
-        corrupted_logit_diff: float = corrupted_logit_diff,
-        clean_logit_diff: float = clean_logit_diff,
-    ) -> Float[Tensor, ""]:
-        '''
-        Linear function of logit diff, calibrated so that it equals 0 when performance is 
-        same as on corrupted input, and 1 when performance is same as on clean input.
-        '''
+def ioi_metric(
+    logits: Float[Tensor, "batch seq d_vocab"], 
+    answer_tokens: Float[Tensor, "batch 2"] = answer_tokens,
+    corrupted_logit_diff: float = corrupted_logit_diff,
+    clean_logit_diff: float = clean_logit_diff,
+) -> Float[Tensor, ""]:
+    '''
+    Linear function of logit diff, calibrated so that it equals 0 when performance is 
+    same as on corrupted input, and 1 when performance is same as on clean input.
+    '''
     pass
 
+
+if MAIN:
     t.testing.assert_close(ioi_metric(clean_logits).item(), 1.0)
     t.testing.assert_close(ioi_metric(corrupted_logits).item(), 0.0)
     t.testing.assert_close(ioi_metric((clean_logits + corrupted_logits) / 2).item(), 0.5)
@@ -1198,36 +1274,19 @@ if MAIN:
 
 
 ```python
-def residual_stack_to_logit_diff(
-    residual_stack: Float[Tensor, "... batch d_model"], 
-    cache: ActivationCache,
-    logit_diff_directions: Float[Tensor, "batch d_model"] = logit_diff_directions,
-) -> Float[Tensor, "..."]:
+def ioi_metric(
+    logits: Float[Tensor, "batch seq d_vocab"], 
+    answer_tokens: Float[Tensor, "batch 2"] = answer_tokens,
+    corrupted_logit_diff: float = corrupted_logit_diff,
+    clean_logit_diff: float = clean_logit_diff,
+) -> Float[Tensor, ""]:
     '''
-    Gets the avg logit difference between the correct and incorrect answer for a given 
-    stack of components in the residual stream.
+    Linear function of logit diff, calibrated so that it equals 0 when performance is 
+    same as on corrupted input, and 1 when performance is same as on clean input.
     '''
     # SOLUTION
-    batch_size = residual_stack.size(-2)
-    scaled_residual_stack = cache.apply_ln_to_stack(residual_stack, layer=-1, pos_slice=-1)
-    return einops.einsum(
-        scaled_residual_stack, logit_diff_directions,
-        "... batch d_model, batch d_model -> ..."
-    ) / batch_size
-
-
-# Test function by checking that it gives the same result as the original logit difference
-
-def topk_of_Nd_tensor(tensor: Float[Tensor, "rows cols"], k: int):
-    '''
-    Helper function: does same as tensor.topk(k).indices, but works over 2D tensors.
-    Returns a list of indices, i.e. shape (k, tensor.ndim).
-    '''
-    i = t.topk(tensor.flatten(), k).indices
-    return np.array(np.unravel_index(utils.to_numpy(i), tensor.shape)).T.tolist()
-
-
-    # SOLUTION
+    patched_logit_diff = logits_to_ave_logit_diff(logits, answer_tokens)
+    return (patched_logit_diff - corrupted_logit_diff) / (clean_logit_diff  - corrupted_logit_diff)
 ```
 </details>
 
@@ -1249,12 +1308,7 @@ if MAIN:
     )
     
     labels = [f"{tok} {i}" for i, tok in enumerate(model.to_str_tokens(clean_tokens[0]))]
-
-```
-
-```python
-
-if MAIN:
+    
     imshow(
         act_patch_resid_pre, 
         labels={"x": "Position", "y": "Layer"},
@@ -1288,6 +1342,15 @@ To be clear, the striking thing about this graph isn't that the first row is zer
 
 
 ### Exercise - implement head-to-residual patching
+
+```c
+Difficulty: 🟠🟠🟠🟠⚪
+Importance: 🟠🟠🟠🟠🟠
+
+You should spend up to 20-25 minutes on this exercise.
+
+It's very important to understand how patching works. Many subsequent exercises will build on this one.
+```
 
 Now, you should implement the `get_act_patch_resid_pre` function below, which should behave just like the one above. A quick refresher on how to use hooks in this way:
 
@@ -1401,43 +1464,6 @@ if MAIN:
 
 ```
 
-<details>
-<summary>Solution</summary>
-
-```python
-def patch_residual_component(
-    corrupted_residual_component: Float[Tensor, "batch pos d_model"],
-    hook: HookPoint,
-    pos: int,
-    clean_cache: ActivationCache
-) -> Float[Tensor, "batch pos d_model"]:
-    corrupted_residual_component[:, pos, :] = clean_cache[hook.name][:, pos, :]
-    return corrupted_residual_component
-
-
-def get_act_patch_resid_pre(
-    model: HookedTransformer,
-    corrupted_tokens: Float[Tensor, "batch pos"],
-    clean_cache: ActivationCache,
-    patching_metric: Callable[[Float[Tensor, "batch pos d_vocab"]], float]
-) -> Float[Tensor, "layer pos"]:
-    model.reset_hooks()
-    results = t.zeros(model.cfg.n_layers, tokens.size(1), device="cuda", dtype=t.float32)
-
-    for layer in tqdm_notebook(range(model.cfg.n_layers)):
-        for position in range(corrupted_tokens.shape[1]):
-            hook_fn = partial(patch_residual_component, pos=position, clean_cache=clean_cache)
-            patched_logits = model.run_with_hooks(
-                corrupted_tokens,
-                fwd_hooks = [(utils.get_act_name("resid_pre", layer), hook_fn)],
-            )
-            results[layer, position] = patching_metric(patched_logits)
-
-    return results
-```
-</details>
-
-
 ## Patching in residual stream by block
 
 
@@ -1488,6 +1514,15 @@ I only have suggestive evidence of this, and would love to see someone look into
 
 
 ### Exercise (optional) - implement head-to-block patching
+
+```c
+Difficulty: 🟠🟠⚪⚪⚪
+Importance: 🟠🟠⚪⚪⚪
+
+You should spend up to ~10 minutes on this exercise. 
+
+Most code can be copied from the last exercise.
+```
 
 If you want, you can implement the `get_act_patch_resid_pre` function for fun, although it's similar enough to the previous exercise that doing this isn't compulsory.
 
@@ -1584,12 +1619,7 @@ if MAIN:
         clean_cache, 
         ioi_metric
     )
-
-```
-
-```python
-
-if MAIN:
+    
     imshow(
         act_patch_attn_head_out_all_pos, 
         labels={"y": "Layer", "x": "Head"}, 
@@ -1611,6 +1641,15 @@ We see some of the heads that we observed in our attention plots at the end of l
 
 
 ### Exercise - implement head-to-head patching
+
+```c
+Difficulty: 🟠🟠🟠⚪⚪
+Importance: 🟠🟠🟠🟠⚪
+
+You should spend up to 10-15 minutes on this exercise. 
+
+Again, it should be similar to the first patching exercise (you can copy code).
+```
 
 You should implement your own version of this patching function below.
 
@@ -1662,12 +1701,7 @@ if MAIN:
     act_patch_attn_head_out_all_pos_own = get_act_patch_attn_head_out_all_pos(model, corrupted_tokens, clean_cache, ioi_metric)
     
     t.testing.assert_close(act_patch_attn_head_out_all_pos, act_patch_attn_head_out_all_pos_own)
-
-```
-
-```python
-
-if MAIN:
+    
     imshow(
         act_patch_attn_head_out_all_pos_own,
         title="Logit Difference From Patched Attn Head Output", 
@@ -1755,12 +1789,7 @@ if MAIN:
         clean_cache, 
         ioi_metric
     )
-
-```
-
-```python
-
-if MAIN:
+    
     imshow(
         act_patch_attn_head_all_pos_every, 
         facet_col=0, 
@@ -1772,6 +1801,15 @@ if MAIN:
 ```
 
 ### Exercise (optional) - implement head-to-head-input patching
+
+```c
+Difficulty: 🟠🟠⚪⚪⚪
+Importance: 🟠🟠⚪⚪⚪
+
+You should spend up to ~10 minutes on this exercise. 
+
+Most code can be copied from the last exercise.
+```
 
 Again, if you want to implement this yourself then you can do so below, but it isn't a compulsory exercise because it isn't conceptually different from the previous exercises. If you don't implement it, then you should still look at the solution to make sure you understand what's going on.
 
@@ -1939,21 +1977,21 @@ OK, let's zoom out and reconsolidate. Here's a recap of the most important obser
 
 * Heads `9.9`, `9.6`, and `10.0` are the most important heads in terms of directly writing to the residual stream. In all these heads, the `END` attends strongly to the `IO`.
     * We discovered this by taking the values written by each head in each layer to the residual stream, and projecting them along the logit diff direction by using `residual_stack_to_logit_diff`. We also looked at attention patterns using `circuitsvis`.
-    * <span style="color:turquoise">**This suggests that these heads are copying `IO` to `end`, to use it as the predicted next token.**</span>
+    * <span style="color:darkorange">**This suggests that these heads are copying `IO` to `end`, to use it as the predicted next token.**</span>
     * The question then becomes *"how do these heads know to attend to this token, and not attend to `S`?"*
 
 <br>
 
 * All the action is on `S2` until layer 7 and then transitions to `END`. And that attention layers matter a lot, MLP layers not so much (apart from MLP0, likely as an extended embedding).
     * We discovered this by doing **activation patching** on `resid_pre`, `attn_out`, and `mlp_out`.
-    * <span style="color:turquoise">**This suggests that there is a cluster of heads in layers 7 & 8, which move information from `S2` to `END`. We deduce that this information is how heads `9.9`, `9.6` and `10.0` know to attend to `IO`.**</span>
+    * <span style="color:darkorange">**This suggests that there is a cluster of heads in layers 7 & 8, which move information from `S2` to `END`. We deduce that this information is how heads `9.9`, `9.6` and `10.0` know to attend to `IO`.**</span>
     * The question then becomes *"what is this information, how does it end up in the `S2` token, and how does `END` know to attend to it?"*
 
 <br>
 
 * The significant heads in layers 7 & 8 are `7.3`, `7.9`, `8.6`, `8.10`. These heads have high activation patching values for their value vectors, less so for their queries and keys.
     * We discovered this by doing **activation patching** on the value inputs for these heads.
-    * <span style="color:turquoise">**This supports the previous observation, and it tells us that the interesting computation goes into *what gets moved* from `S2` to `END`, rather than the fact that `END` attends to `S2`.**</span>.
+    * <span style="color:darkorange">**This supports the previous observation, and it tells us that the interesting computation goes into *what gets moved* from `S2` to `END`, rather than the fact that `END` attends to `S2`.**</span>.
     * We still don't know: *"what is this information, and how does it end up in the `S2` token?"*
 
 <br>
@@ -2049,29 +2087,14 @@ def section_4():
 
 <ul class="contents">
     <li class='margtop'><a class='contents-el' href='#setup'>Setup</a></li>
-    <li class='margtop'><a class='contents-el' href='#what-is-path-patching?'>What is path patching?</a></li>
+    <li class='margtop'><a class='contents-el' href='#what-is-path-patching'>What is path patching?</a></li>
     <li class='margtop'><a class='contents-el' href='#path-patching:-name-mover-heads'>Path Patching: Name Mover Heads</a></li>
     <li><ul class="contents">
         <li><a class='contents-el' href='#exercise-implement-path-patching-to-the-final-residual-stream-value'><b>Exercise</b> - implement path patching to the final residual stream value</a></li>
     </ul></li>
-    <li class='margtop'><a class='contents-el' href='#copying-&-writing-direction-results'>Copying & writing direction results</a></li>
-    <li><ul class="contents">
-        <li><a class='contents-el' href='#exercise-replicate-writing-direction-results'><b>Exercise</b> - replicate writing direction results</a></li>
-        <li><a class='contents-el' href='#exercise-replicate-copying-score-results'><b>Exercise</b> - replicate copying score results</a></li>
-    </ul></li>
     <li class='margtop'><a class='contents-el' href='#path-patching:-s-inhibition-heads'>Path Patching: S-Inhibition Heads</a></li>
     <li><ul class="contents">
         <li><a class='contents-el' href='#exercise-implement-path-patching-from-head-to-head'><b>Exercise</b> - implement path patching from head to head</a></li>
-    </ul></li>
-    <li class='margtop'><a class='contents-el' href='#validation-of-early-heads'>Validation of early heads</a></li>
-    <li><ul class="contents">
-        <li><a class='contents-el' href='#exercise-perform-head-validation'><b>Exercise</b> - perform head validation</a></li>
-    </ul></li>
-    <li class='margtop'><a class='contents-el' href='#minimal-circuit'>Minimal Circuit</a></li>
-    <li><ul class="contents">
-        <li><a class='contents-el' href='#background:-faithfulness,-completeness,-and-minimality'>Background: faithfulness, completeness, and minimality</a></li>
-        <li><a class='contents-el' href='#exercise-constructing-the-minimal-circuit'><b>Exercise</b> - constructing the minimal circuit</a></li>
-        <li><a class='contents-el' href='#exercise-calculate-minimality-scores'><b>Exercise</b> - calculate minimality scores</a></li>
 </ul></li>""", unsafe_allow_html=True)
 
     st.markdown(r"""
@@ -2185,24 +2208,24 @@ We'll call these functions something slightly different, so as not to pollute na
 
 
 ```python
+def logits_to_ave_logit_diff_2(logits: Float[Tensor, "batch seq d_vocab"], ioi_dataset: IOIDataset = ioi_dataset, per_prompt=False):
+    '''
+    Returns logit difference between the correct and incorrect answer.
+
+    If per_prompt=True, return the array of differences rather than the average.
+    '''
+    
+    # Only the final logits are relevant for the answer
+    # Get the logits corresponding to the indirect object / subject tokens respectively
+    io_logits: Float[Tensor, "batch"] = logits[range(logits.size(0)), ioi_dataset.word_idx["end"], ioi_dataset.io_tokenIDs]
+    s_logits: Float[Tensor, "batch"] = logits[range(logits.size(0)), ioi_dataset.word_idx["end"], ioi_dataset.s_tokenIDs]
+    # Find logit difference
+    answer_logit_diff = io_logits - s_logits
+    return answer_logit_diff if per_prompt else answer_logit_diff.mean()
+
+
 
 if MAIN:
-    def logits_to_ave_logit_diff_2(logits: Float[Tensor, "batch seq d_vocab"], ioi_dataset: IOIDataset = ioi_dataset, per_prompt=False):
-        '''
-        Returns logit difference between the correct and incorrect answer.
-    
-        If per_prompt=True, return the array of differences rather than the average.
-        '''
-        
-        # Only the final logits are relevant for the answer
-        # Get the logits corresponding to the indirect object / subject tokens respectively
-        io_logits: Float[Tensor, "batch"] = logits[range(logits.size(0)), ioi_dataset.word_idx["end"], ioi_dataset.io_tokenIDs]
-        s_logits: Float[Tensor, "batch"] = logits[range(logits.size(0)), ioi_dataset.word_idx["end"], ioi_dataset.s_tokenIDs]
-        # Find logit difference
-        answer_logit_diff = io_logits - s_logits
-        return answer_logit_diff if per_prompt else answer_logit_diff.mean()
-    
-    
     model.reset_hooks(including_permanent=True)
     
     ioi_logits_original, ioi_cache = model.run_with_cache(ioi_dataset.toks)
@@ -2246,22 +2269,22 @@ Again, we'll call this function something slightly different.
 
 
 ```python
+def ioi_metric_2(
+    logits: Float[Tensor, "batch seq d_vocab"],
+    clean_logit_diff: float = ioi_average_logit_diff,
+    corrupted_logit_diff: float = abc_average_logit_diff,
+    ioi_dataset: IOIDataset = ioi_dataset,
+) -> float:
+    '''
+    We calibrate this so that the value is 0 when performance isn't harmed (i.e. same as IOI dataset), 
+    and -1 when performance has been destroyed (i.e. is same as ABC dataset).
+    '''
+    patched_logit_diff = logits_to_ave_logit_diff_2(logits, ioi_dataset)
+    return (patched_logit_diff - clean_logit_diff) / (clean_logit_diff - corrupted_logit_diff)
+
+
 
 if MAIN:
-    def ioi_metric_2(
-        logits: Float[Tensor, "batch seq d_vocab"],
-        clean_logit_diff: float = ioi_average_logit_diff,
-        corrupted_logit_diff: float = abc_average_logit_diff,
-        ioi_dataset: IOIDataset = ioi_dataset,
-    ) -> float:
-        '''
-        We calibrate this so that the value is 0 when performance isn't harmed (i.e. same as IOI dataset), 
-        and -1 when performance has been destroyed (i.e. is same as ABC dataset).
-        '''
-        patched_logit_diff = logits_to_ave_logit_diff_2(logits, ioi_dataset)
-        return (patched_logit_diff - clean_logit_diff) / (clean_logit_diff - corrupted_logit_diff)
-    
-    
     print(f"IOI metric (IOI dataset): {ioi_metric_2(ioi_logits_original):.4f}")
     print(f"IOI metric (ABC dataset): {ioi_metric_2(abc_logits_original):.4f}")
 
@@ -2330,6 +2353,15 @@ Here is an illustration for a 2-layer transformer:
 
 
 ### Exercise - implement path patching to the final residual stream value
+
+```c
+Difficulty: 🟠🟠🟠🟠🟠
+Importance: 🟠🟠🟠🟠⚪
+
+You should spend up to 30-45 minutes on this exercise.
+
+Path patching is a very challenging algorithm with many different steps.
+```
 
 You should implement path patching from heads to the residual stream, as described above (and in the paper).
 
@@ -2431,28 +2463,6 @@ def get_path_patch_head_to_final_resid_post(
 
 
 ```python
-    pass
-
-def patch_or_freeze_head_vectors(
-    orig_head_vector: Float[Tensor, "batch pos head_index d_head"],
-    hook: HookPoint, 
-    new_cache: ActivationCache,
-    orig_cache: ActivationCache,
-    head_to_patch: Tuple[int, int], 
-) -> Float[Tensor, "batch pos head_index d_head"]:
-    '''
-    This helps implement step 2 of path patching. We freeze all head outputs (i.e. set them
-    to their values in orig_cache), except for head_to_patch (if it's in this layer) which
-    we patch with the value from new_cache.
-
-    head_to_patch: tuple of (layer, head)
-        we can use hook.layer() to check if the head to patch is in this layer
-    '''
-    # Setting using ..., otherwise changing orig_head_vector will edit cache value too
-    orig_head_vector[...] = orig_cache[hook.name][...]
-    if head_to_patch[0] == hook.layer():
-        orig_head_vector[:, :, head_to_patch[1]] = new_cache[hook.name][:, :, head_to_patch[1]]
-    return orig_head_vector
 
 
 def get_path_patch_head_to_final_resid_post(
@@ -2467,10 +2477,10 @@ def get_path_patch_head_to_final_resid_post(
 
 
 if MAIN:
-    path_patch_head_to_final_resid_post_eq = get_path_patch_head_to_final_resid_post(model, ioi_metric_2)
+    path_patch_head_to_final_resid_post = get_path_patch_head_to_final_resid_post(model, ioi_metric_2)
     
     imshow(
-        100 * path_patch_head_to_final_resid_post_eq,
+        100 * path_patch_head_to_final_resid_post,
         title="Direct effect on logit difference",
         labels={"x":"Head", "y":"Layer", "color": "Logit diff. variation"},
         coloraxis=dict(colorbar_ticksuffix = "%"),
@@ -2479,65 +2489,11 @@ if MAIN:
 
 ```
 
-```python
-# path_patch_head_to_final_resid_post = patching.generic_path_patch(
-
-if MAIN:
-    path_patch_head_to_final_resid_post = patching.path_patch(
-        model,
-        clean_tokens=ioi_dataset.toks,
-        corrupted_tokens=abc_dataset.toks,
-        clean_cache=ioi_cache,
-        corrupted_cache=abc_cache,
-        patching_metric=ioi_metric_2,
-    
-        receiver_components=[(-1, "resid_post")],
-        receiver_seq_pos="all",
-        sender_components="z",
-        sender_seq_pos="all",
-    
-        verbose=True,
-    )
-        
-
-```
-
-```python
-
-if MAIN:
-    imshow(
-        100 * path_patch_head_to_final_resid_post,
-        title="Direct effect on logit difference",
-        labels={"x":"Component", "y":"Layer", "color": "Logit diff. variation"},
-        x=[f"h{i}" for i in range(12)],
-        coloraxis=dict(colorbar_ticksuffix = "%"),
-        width=600,
-    )
-
-```
-
-```python
-
-if MAIN:
-    t.testing.assert_close(temp_cache["blocks.11.hook_resid_post"], patched_cache["blocks.11.hook_resid_post"])
-
-```
-
 <details>
 <summary>Solution</summary>
 
 
 ```python
-def make_table(cols, colnames, title="", n_rows=5, decimals=4):
-    '''Makes and displays a table, from cols rather than rows (using rich print)'''
-    table = Table(*colnames, title=title)
-    rows = list(zip(*cols))
-    f = lambda x: x if isinstance(x, str) else f"{x:.{decimals}f}"
-    for row in rows[:n_rows]:
-        table.add_row(*list(map(f, row)))
-    rprint(table)
-# SOLUTION
-
 def get_path_patch_head_to_final_resid_post(
     model: HookedTransformer,
     patching_metric: Callable,
@@ -2616,9 +2572,25 @@ def get_path_patch_head_to_final_resid_post(
         results[sender_layer, sender_head] = patching_metric(patched_logits)
 
     return results
+```
+```python
+    hook: HookPoint, 
+    new_cache: ActivationCache,
+    orig_cache: ActivationCache,
+    head_to_patch: Tuple[int, int], 
+    '''
+    This helps implement step 2 of path patching. We freeze all head outputs (i.e. set them
+    to their values in orig_cache), except for head_to_patch (if it's in this layer) which
+    we patch with the value from new_cache.
+    head_to_patch: tuple of (layer, head)
+        we can use hook.layer() to check if the head to patch is in this layer
+    '''
+    # Setting using ..., otherwise changing orig_head_vector will edit cache value too
+    orig_head_vector[...] = orig_cache[hook.name][...]
+    if head_to_patch[0] == hook.layer():
+        orig_head_vector[:, :, head_to_patch[1]] = new_cache[hook.name][:, :, head_to_patch[1]]
+    return orig_head_vector
 
-
-# path_patch_head_to_final_resid_post_eq = get_path_patch_head_to_final_resid_post(model, ioi_metric_2)
 ```
 </details>
 
@@ -2630,20 +2602,289 @@ What is the interpretation of this plot? How does it compare to the equivalent p
 
 This plot is actually almost identical to the one we got from activation patching (apart from the results being negated, because of the new metric).
 
-This makes sense; the only reason activation patching would do something different to path patching is if the heads writing in the `Mary - John` direction had their outputs used by a later head (because this would be accounted for in activation patching, whereas path patching isolates the direct effect on the residual stream only). This isn't impossible (e.g. we could imagine a head that identifies directions like `Mary - John` and "amplifies" them), but it's unlikely (because if amplifying this direction was a good idea, then name mover head would have just written more strongly in this direction itself!).
+This makes sense; the only reason activation patching would do something different to path patching is if the heads writing in the `Mary - John` direction had their outputs used by a later head (because this would be accounted for in activation patching, whereas path patching isolates the direct effect on the residual stream only). Since attention heads' primary purpose is to move information around the model, it's reasonable to guess that this probably isn't happening.
 
 Don't worry though, in the next set of exercises we'll do some more interesting path patching, and we'll get some results which are meaningfully different from our activation patching results.
 </details>
 
 
+## Path Patching: S-Inhibition Heads
+
+
+In the first section on path patching, we performed a simple kind of patching - from the output of an attention head to the final value of the residual stream. Here we'll do something a bit more interesting, and patch from the output of one head to the input of a later head. The purpose of this is to examine exactly how two heads are composing, and what effect the composed heads have on the model's output.
+
+We got a hint of this in the previous section, where we patched the values of the S-inhibition heads and found that they were important. But this didn't tell us which inputs to these value vectors were important; we had to make educated guesses about this based on our analysis earlier parts of the model. In path patching, we can perform a more precise test to find which heads are important.
+
+The paper's results from path patching are shown in figure 5(b), on page 7.
+
+
+### Exercise - implement path patching from head to head
+
+```c
+Difficulty: 🟠🟠🟠⚪⚪
+Importance: 🟠🟠🟠⚪⚪
+
+You should spend up to 20-25 minutes on this exercise.
+
+You'll need a new hook function, but copying code from the previous exercise should make this one easier.
+```
+
+You should fill in the function `get_path_patch_head_to_head` below. It takes as arguments a list of receiver nodes (as well as the type of input - keys, queries, or values), and returns a tensor of shape\* `(layer, head)` where each element is the result of running the patching metric on the output of the model, after applying the 3-step path patching algorithm from one of the model's heads to all the receiver heads. You should be able to replicate the paper's results (figure 5(b)).
+
+\**Actually, you don't need to return all layers, because the causal effect from any sender head which is on the same or a later layer than the last of your receiver heads will necessarily be zero.*
+
+If you want a bit more guidance, you can use the dropdown below to see the ways in which this function should be different from your first path patching function (in most ways these functions will be similar, so you can start by copying that function).
+
+<details>
+<summary>Differences from first path patching function</summary>
+
+Step 1 is identical in both - gather all the observations.
+
+Step 2 is very similar. The only difference is that you'll be caching a different set of activations (your receiver heads).
+
+In section 3, since your receiver nodes are in the middle of the model rather than at the very end, you will have to run the model again with these nodes patched in rather than just calculating the logit output directly from the patched values of the final residual stream. To do this, you'll have to write a new hook function to patch in the inputs to an attention head (if you haven't done this already).
+</details>
+
+
+```python
+
+
+def get_path_patch_head_to_heads(
+    receiver_heads: List[Tuple[int, int]],
+    receiver_input: str,
+    model: HookedTransformer,
+    patching_metric: Callable,
+    new_dataset: IOIDataset = abc_dataset,
+    orig_dataset: IOIDataset = ioi_dataset,
+    new_cache: Optional[ActivationCache] = None,
+    orig_cache: Optional[ActivationCache] = None,
+) -> Float[Tensor, "layer head"]:
+    '''
+    Performs path patching (see algorithm in appendix B of IOI paper), with:
+
+        sender head = (each head, looped through, one at a time)
+        receiver node = input to a later head (or set of heads)
+
+    The receiver node is specified by receiver_heads and receiver_input.
+    Example (for S-inhibition path patching the queries):
+        receiver_heads = [(8, 6), (8, 10), (7, 9), (7, 3)],
+        receiver_input = "v"
+
+    Returns:
+        tensor of metric values for every possible sender head
+    '''
+    pass
+
+
+```
+
+```python
+
+if MAIN:
+    model.reset_hooks()
+    
+    s_inhibition_value_path_patching_results = get_path_patch_head_to_heads(
+        receiver_heads = [(8, 6), (8, 10), (7, 9), (7, 3)],
+        receiver_input = "v",
+        model = model,
+        patching_metric = ioi_metric_2
+    )
+    
+    imshow(
+        100 * s_inhibition_value_path_patching_results,
+        title="Direct effect on S-Inhibition Heads' values", 
+        labels={"x": "Head", "y": "Layer", "color": "Logit diff.<br>variation"},
+        width=600,
+        coloraxis=dict(colorbar_ticksuffix = "%"),
+    )
+
+```
+
+<details>
+<summary>Question - what is the interpretation of this plot? </summary>
+
+This plot confirms our earlier observations, that the S-inhibition heads' value vectors are the ones which matter. But it does more, by confirming our hypothesis that the S-inhibition heads' value vectors are supplied to them primarily by the outputs of heads `0.1`, `3.0`, `5.5` and `6.9` (which are the heads found by the paper to be the two most important duplicate token heads and two most important induction heads respectively).
+</details>
+
+<details>
+<summary>Solution </summary>
+
+```python
+def patch_head_input(
+    orig_activation: Float[Tensor, "batch pos head_idx d_head"],
+    hook: HookPoint,
+    patched_cache: ActivationCache,
+    head_list: List[Tuple[int, int]],
+) -> Float[Tensor, "batch pos head_idx d_head"]:
+    '''
+    Function which can patch any combination of heads in layers,
+    according to the heads in head_list.
+    '''
+    heads_to_patch = [head for layer, head in head_list if layer == hook.layer()]
+    orig_activation[:, :, heads_to_patch] = patched_cache[hook.name][:, :, heads_to_patch]
+    return orig_activation
+
+
+def get_path_patch_head_to_heads(
+    receiver_heads: List[Tuple[int, int]],
+    receiver_input: str,
+    model: HookedTransformer,
+    patching_metric: Callable,
+    new_dataset: IOIDataset = abc_dataset,
+    orig_dataset: IOIDataset = ioi_dataset,
+    new_cache: Optional[ActivationCache] = None,
+    orig_cache: Optional[ActivationCache] = None,
+) -> Float[Tensor, "layer head"]:
+    '''
+    Performs path patching (see algorithm in appendix B of IOI paper), with:
+
+        sender head = (each head, looped through, one at a time)
+        receiver node = input to a later head (or set of heads)
+
+    The receiver node is specified by receiver_heads and receiver_input.
+    Example (for S-inhibition path patching the queries):
+        receiver_heads = [(8, 6), (8, 10), (7, 9), (7, 3)],
+        receiver_input = "v"
+
+    Returns:
+        tensor of metric values for every possible sender head
+    '''
+    # SOLUTION
+    model.reset_hooks()
+
+    assert receiver_input in ("k", "q", "v")
+    receiver_layers = set(next(zip(*receiver_heads)))
+    receiver_hook_names = [utils.get_act_name(receiver_input, layer) for layer in receiver_layers]
+    receiver_hook_names_filter = lambda name: name in receiver_hook_names
+
+    results = t.zeros(max(receiver_layers), model.cfg.n_heads, device="cuda", dtype=t.float32)
+    
+    # ========== Step 1 ==========
+    # Gather activations on x_orig and x_new
+
+    # Note the use of names_filter for the run_with_cache function. Using it means we 
+    # only cache the things we need (in this case, just attn head outputs).
+    z_name_filter = lambda name: name.endswith("z")
+    if new_cache is None:
+        _, new_cache = model.run_with_cache(
+            new_dataset.toks, 
+            names_filter=z_name_filter, 
+            return_type=None
+        )
+    if orig_cache is None:
+        _, orig_cache = model.run_with_cache(
+            orig_dataset.toks, 
+            names_filter=z_name_filter, 
+            return_type=None
+        )
+
+    # Note, the sender layer will always be before the final receiver layer, otherwise there will
+    # be no causal effect from sender -> receiver. So we only need to loop this far.
+    for (sender_layer, sender_head) in tqdm(list(itertools.product(
+        range(max(receiver_layers)),
+        range(model.cfg.n_heads)
+    ))):
+
+        # ========== Step 2 ==========
+        # Run on x_orig, with sender head patched from x_new, every other head frozen
+
+        hook_fn = partial(
+            patch_or_freeze_head_vectors,
+            new_cache=new_cache, 
+            orig_cache=orig_cache,
+            head_to_patch=(sender_layer, sender_head),
+        )
+        model.add_hook(z_name_filter, hook_fn) #, level=1)
+        
+        _, patched_cache = model.run_with_cache(
+            orig_dataset.toks, 
+            names_filter=receiver_hook_names_filter,  
+            return_type=None
+        )
+        # model.reset_hooks(including_permanent=True)
+        assert set(patched_cache.keys()) == set(receiver_hook_names)
+
+        # ========== Step 3 ==========
+        # Run on x_orig, patching in the receiver node(s) from the previously cached value
+        
+        hook_fn = partial(
+            patch_head_input, 
+            patched_cache=patched_cache, 
+            head_list=receiver_heads,
+        )
+        patched_logits = model.run_with_hooks(
+            orig_dataset.toks,
+            fwd_hooks = [(receiver_hook_names_filter, hook_fn)], 
+            return_type="logits"
+        )
+
+        # Save the results
+        results[sender_layer, sender_head] = patching_metric(patched_logits)
+
+    return results
+```
+</details>
+
+
+
+
+""", unsafe_allow_html=True)
+
+
+def section_5():
+
+    st.sidebar.markdown(r"""
+
+## Table of Contents
+
+<ul class="contents">
+    <li class='margtop'><a class='contents-el' href='#copying-writing-direction-results'>Copying & writing direction results</a></li>
+    <li><ul class="contents">
+        <li><a class='contents-el' href='#exercise-replicate-writing-direction-results'><b>Exercise</b> - replicate writing direction results</a></li>
+        <li><a class='contents-el' href='#exercise-replicate-copying-score-results'><b>Exercise</b> - replicate copying score results</a></li>
+    </ul></li>
+    <li class='margtop'><a class='contents-el' href='#validation-of-early-heads'>Validation of early heads</a></li>
+    <li><ul class="contents">
+        <li><a class='contents-el' href='#exercise-perform-head-validation'><b>Exercise</b> - perform head validation</a></li>
+    </ul></li>
+    <li class='margtop'><a class='contents-el' href='#minimal-circuit'>Minimal Circuit</a></li>
+    <li><ul class="contents">
+        <li><a class='contents-el' href='#background:-faithfulness-completeness-and-minimality'>Background: faithfulness, completeness, and minimality</a></li>
+        <li><a class='contents-el' href='#exercise-constructing-the-minimal-circuit'><b>Exercise</b> - constructing the minimal circuit</a></li>
+        <li><a class='contents-el' href='#exercise-calculate-minimality-scores'><b>Exercise</b> - calculate minimality scores</a></li>
+</ul></li>""", unsafe_allow_html=True)
+
+    st.markdown(r"""
+
+# 5️⃣ Paper Replication
+
+
+> ##### Learning objectives
+> 
+> * Replicate most of the other results from the [IOI paper](https://arxiv.org/abs/2211.00593)
+> * Practice more open-ended, less guided coding
+
+This section will be a lot more open-ended and challenging. You'll be given less guidance in the exercises.
+
+
 ## Copying & writing direction results
 
-Note - if you want to keep doing path patching, you can skip to the next section (on S-inhibition heads). However, these exercises are still important to get the full picture, and you should return to them.
+
+We'll start this section by replicating the paper's analysis of the **name mover heads** and **negative name mover heads**. Our previous analysis should have pretty much convinced us that these heads are copying / negatively copying our indirect object token, but the results here show this with a bit more rigour.
 
 
 ### Exercise - replicate writing direction results
 
-Now, let's move on to figure 3(c). This plots the output of the strongest name mover and negative name mover heads against the attention probabilities for `END` attending to `IO` or `S` (color-coded). 
+```c
+Difficulty: 🟠🟠🟠🟠⚪
+Importance: 🟠🟠⚪⚪⚪
+
+You should spend up to 20-25 minutes on this exercise.
+
+These exercises are much more challenging than they are conceptually important.
+```
+
+Let's look at figure 3(c) from the paper. This plots the output of the strongest name mover and negative name mover heads against the attention probabilities for `END` attending to `IO` or `S` (color-coded). 
 
 Some clarifications:
 * "Projection" here is being used synonymously with "dot product".
@@ -2746,7 +2987,7 @@ def calculate_and_show_scatter_embedding_vs_attn(
     projection_in_s_dir: Float[Tensor, "batch"] = (output_on_end_token * s_unembedding).sum(-1)
 
     # Get attention probs, and index to get the probabilities from END -> IO / S
-    attn_probs: Float[Tensor, "batch q k"] = cache[utils.get_act_name("pattern", layer)][:, head]
+    attn_probs: Float[Tensor, "batch q k"] = cache["pattern", layer][:, head]
     attn_from_end_to_io = attn_probs[t.arange(N), dataset.word_idx["end"], dataset.word_idx["IO"]]
     attn_from_end_to_s = attn_probs[t.arange(N), dataset.word_idx["end"], dataset.word_idx["S1"]]
 
@@ -2773,7 +3014,16 @@ The same is true for the negative name mover head `11.10`, only it works in the 
 
 ### Exercise - replicate copying score results
 
-Let's test whether the name mover heads are doing copying in a different way, by looking directly at the OV circuit.
+```c
+Difficulty: 🟠🟠🟠🟠🟠
+Importance: 🟠🟠⚪⚪⚪
+
+You should spend up to 30-40 minutes on this exercise.
+
+These exercises are much more challenging than they are conceptually important.
+```
+
+Now let's do a different kind of test of the name mover heads' copying, by looking directly at the OV circuits.
 
 From page 6 of the paper:
 
@@ -2907,148 +3157,6 @@ def get_copying_scores(
 </details>
 
 
-## Path Patching: S-Inhibition Heads
-
-
-In the first section on path patching, we performed a simple kind of patching - from the output of an attention head to the final value of the residual stream. Here we'll do something a bit more interesting, and patch from the output of one head to the input of a later head. The purpose of this is to examine exactly how two heads are composing, and what effect the composed heads have on the model's output.
-
-We got a hint of this in the previous section, where we patched the values of the S-inhibition heads and found that they were important. But this didn't tell us which inputs to these value vectors were important; we had to make educated guesses about this based on our analysis earlier parts of the model. In path patching, we can perform a more precise test to find which heads are important.
-
-The paper's results from path patching are shown in figure 5(b), on page 7.
-
-
-### Exercise - implement path patching from head to head
-
-You should fill in the function `get_path_patch_head_to_head` below. It takes as arguments a list of receiver nodes (as well as the type of input - keys, queries, or values), and returns a tensor of shape\* `(layer, head)` where each element is the result of running the patching metric on the output of the model, after applying the 3-step path patching algorithm from one of the model's heads to all the receiver heads. You should be able to replicate the paper's results (figure 5(b)).
-
-\**Actually, you don't need to return all layers, because the causal effect from any sender head which is on the same or a later layer than the last of your receiver heads will necessarily be zero.*
-
-If you want a bit more guidance, you can use the dropdown below to see the ways in which this function should be different from your first path patching function (in most ways these functions will be similar, so you can start by copying that function).
-
-<details>
-<summary>Differences from first path patching function</summary>
-
-Step 1 is identical in both - gather all the observations.
-
-Step 2 is very similar. The only difference is that you'll be caching a different set of activations (your receiver heads).
-
-In section 3, since your receiver nodes are in the middle of the model rather than at the very end, you will have to run the model again with these nodes patched in rather than just calculating the logit output directly from the patched values of the final residual stream. To do this, you'll have to write a new hook function to patch in the inputs to an attention head (if you haven't done this already).
-</details>
-
-
-```python
-# FLAT SOLUTION NOINDENT
-# 
-def patch_head_input(
-    orig_activation: Float[Tensor, "batch pos head_idx d_head"],
-    hook: HookPoint,
-    patched_cache: ActivationCache,
-    head_list: List[Tuple[int, int]],
-) -> Float[Tensor, "batch pos head_idx d_head"]:
-    '''
-    Function which can patch any combination of heads in layers,
-    according to the heads in head_list.
-    '''
-    heads_to_patch = [head for layer, head in head_list if layer == hook.layer()]
-    orig_activation[:, :, heads_to_patch] = patched_cache[hook.name][:, :, heads_to_patch]
-    return orig_activation
-# FLAT SOLUTION END
-
-
-def get_path_patch_head_to_heads(
-    receiver_heads: List[Tuple[int, int]],
-    receiver_input: str,
-    model: HookedTransformer,
-    patching_metric: Callable,
-    new_dataset: IOIDataset = abc_dataset,
-    orig_dataset: IOIDataset = ioi_dataset,
-    new_cache: Optional[ActivationCache] = None,
-    orig_cache: Optional[ActivationCache] = None,
-) -> Float[Tensor, "layer head"]:
-    '''
-    Performs path patching (see algorithm in appendix B of IOI paper), with:
-
-        sender head = (each head, looped through, one at a time)
-        receiver node = input to a later head (or set of heads)
-
-    The receiver node is specified by receiver_heads and receiver_input.
-    Example (for S-inhibition path patching the queries):
-        receiver_heads = [(8, 6), (8, 10), (7, 9), (7, 3)],
-        receiver_input = "v"
-
-    Returns:
-        tensor of metric values for every possible sender head
-    '''
-    pass
-
-
-```
-
-```python
-
-if MAIN:
-    model.reset_hooks()
-    
-    s_inhibition_value_path_patching_results = get_path_patch_head_to_heads(
-        receiver_heads = [(8, 6), (8, 10), (7, 9), (7, 3)],
-        receiver_input = "v",
-        model = model,
-        patching_metric = ioi_metric_2
-    )
-    
-    imshow(
-        100 * s_inhibition_value_path_patching_results,
-        title="Direct effect on S-Inhibition Heads' values", 
-        labels={"x": "Head", "y": "Layer", "color": "Logit diff.<br>variation"},
-        width=600,
-        coloraxis=dict(colorbar_ticksuffix = "%"),
-    )
-
-```
-
-```python
-
-if MAIN:
-    path_patch_head_to_final_resid_post = patching.path_patch(
-        model,
-        clean_tokens=ioi_dataset.toks,
-        corrupted_tokens=abc_dataset.toks,
-        clean_cache=ioi_cache,
-        corrupted_cache=abc_cache,
-        patching_metric=ioi_metric_2,
-    
-        sender_components="z",
-        sender_seq_pos="all",
-        receiver_components=[(8, 6, "v"), (8, 10, "v"), (7, 9, "v"), (7, 3, "v")],
-        receiver_seq_pos="all",
-    
-        verbose=True,
-    )
-    
-    
-    imshow(
-        100 * path_patch_head_to_final_resid_post[:8],
-        title="Direct effect on S-Inhibition Heads' values", 
-        labels={"x": "Head", "y": "Layer", "color": "Logit diff.<br>variation"},
-        width=600,
-        coloraxis=dict(colorbar_ticksuffix = "%"),
-    )
-
-```
-
-<details>
-<summary>Question - what is the interpretation of this plot? </summary>
-
-This plot confirms our earlier observations, that the S-inhibition heads' value vectors are the ones which matter. But it does more, by confirming our hypothesis that the S-inhibition heads' value vectors are supplied to them primarily by the outputs of heads `0.1`, `3.0`, `5.5` and `6.9` (which are the heads found by the paper to be the two most important duplicate token heads and two most important induction heads respectively).
-</details>
-
-<details>
-<summary>Solution </summary>
-
-
-</details>
-
-
 ## Validation of early heads
 
 
@@ -3073,30 +3181,21 @@ Note, it's a leaky abstraction to say things like "head X is an induction head",
 
 ### Exercise - perform head validation
 
+```c
+Difficulty: 🟠🟠🟠⚪⚪
+Importance: 🟠🟠🟠⚪⚪
+
+You should spend up to 20-30 minutes on this exercise.
+
+Understanding how to identify certain types of heads by their characteristic attention patterns is important.
+```
+
 Once you've read the answer in the dropdown above, you should perform this validation. The result should be a replication of Figure 18 in the paper (don't look at this figure until you've attempted the question above, because it will give away the answer!). 
 
 We've provided a template for this function. Note use of `typing.Literal`, which is how we indicate that the argument should be one of the following options.
 
 
 ```python
-
-if MAIN:
-    model.reset_hooks()
-    
-    # FLAT SOLUTION NOINDENT
-    # 
-def generate_repeated_tokens(
-    model: HookedTransformer, 
-    seq_len: int, 
-    batch: int = 1
-) -> Float[Tensor, "batch 2*seq_len"]:
-    '''
-    Generates a sequence of repeated random tokens (no start token).
-    '''
-    rep_tokens_half = t.randint(0, model.cfg.d_vocab, (batch, seq_len), dtype=t.int64)
-    rep_tokens = t.cat([rep_tokens_half, rep_tokens_half], dim=-1).to(device)
-    return rep_tokens
-# FLAT SOLUTION END
 
 
 def get_attn_scores(
@@ -3135,6 +3234,7 @@ def plot_early_head_validation_results(seq_len: int = 50, batch: int = 50):
 
 
 if MAIN:
+    model.reset_hooks()
     plot_early_head_validation_results()
 
 ```
@@ -3144,104 +3244,6 @@ if MAIN:
 
 
 ```python
-def get_path_patch_head_to_heads(
-    receiver_heads: List[Tuple[int, int]],
-    receiver_input: str,
-    model: HookedTransformer,
-    patching_metric: Callable,
-    new_dataset: IOIDataset = abc_dataset,
-    orig_dataset: IOIDataset = ioi_dataset,
-    new_cache: Optional[ActivationCache] = None,
-    orig_cache: Optional[ActivationCache] = None,
-) -> Float[Tensor, "layer head"]:
-    '''
-    Performs path patching (see algorithm in appendix B of IOI paper), with:
-
-        sender head = (each head, looped through, one at a time)
-        receiver node = input to a later head (or set of heads)
-
-    The receiver node is specified by receiver_heads and receiver_input.
-    Example (for S-inhibition path patching the queries):
-        receiver_heads = [(8, 6), (8, 10), (7, 9), (7, 3)],
-        receiver_input = "v"
-
-    Returns:
-        tensor of metric values for every possible sender head
-    '''
-    # SOLUTION
-    model.reset_hooks()
-
-    assert receiver_input in ("k", "q", "v")
-    receiver_layers = set(next(zip(*receiver_heads)))
-    receiver_hook_names = [utils.get_act_name(receiver_input, layer) for layer in receiver_layers]
-    receiver_hook_names_filter = lambda name: name in receiver_hook_names
-
-    results = t.zeros(max(receiver_layers), model.cfg.n_heads, device="cuda", dtype=t.float32)
-    
-    # ========== Step 1 ==========
-    # Gather activations on x_orig and x_new
-
-    # Note the use of names_filter for the run_with_cache function. Using it means we 
-    # only cache the things we need (in this case, just attn head outputs).
-    z_name_filter = lambda name: name.endswith("z")
-    if new_cache is None:
-        _, new_cache = model.run_with_cache(
-            new_dataset.toks, 
-            names_filter=z_name_filter, 
-            return_type=None
-        )
-    if orig_cache is None:
-        _, orig_cache = model.run_with_cache(
-            orig_dataset.toks, 
-            names_filter=z_name_filter, 
-            return_type=None
-        )
-
-    # Note, the sender layer will always be before the final receiver layer, otherwise there will
-    # be no causal effect from sender -> receiver. So we only need to loop this far.
-    for (sender_layer, sender_head) in tqdm(list(itertools.product(
-        range(max(receiver_layers)),
-        range(model.cfg.n_heads)
-    ))):
-
-        # ========== Step 2 ==========
-        # Run on x_orig, with sender head patched from x_new, every other head frozen
-
-        hook_fn = partial(
-            patch_or_freeze_head_vectors,
-            new_cache=new_cache, 
-            orig_cache=orig_cache,
-            head_to_patch=(sender_layer, sender_head),
-        )
-        model.add_hook(z_name_filter, hook_fn) #, level=1)
-        
-        _, patched_cache = model.run_with_cache(
-            orig_dataset.toks, 
-            names_filter=receiver_hook_names_filter,  
-            return_type=None
-        )
-        # model.reset_hooks(including_permanent=True)
-        assert set(patched_cache.keys()) == set(receiver_hook_names)
-
-        # ========== Step 3 ==========
-        # Run on x_orig, patching in the receiver node(s) from the previously cached value
-        
-        hook_fn = partial(
-            patch_head_input, 
-            patched_cache=patched_cache, 
-            head_list=receiver_heads,
-        )
-        patched_logits = model.run_with_hooks(
-            orig_dataset.toks,
-            fwd_hooks = [(receiver_hook_names_filter, hook_fn)], 
-            return_type="logits"
-        )
-
-        # Save the results
-        results[sender_layer, sender_head] = patching_metric(patched_logits)
-
-    return results
-
 def get_attn_scores(
     model: HookedTransformer, 
     seq_len: int, 
@@ -3282,6 +3284,17 @@ def get_attn_scores(
             results[layer, head] = avg_attn_on_duplicates
 
     return results
+```
+```python
+    seq_len: int, 
+    batch: int = 1
+    '''
+    Generates a sequence of repeated random tokens (no start token).
+    '''
+    rep_tokens_half = t.randint(0, model.cfg.d_vocab, (batch, seq_len), dtype=t.int64)
+    rep_tokens = t.cat([rep_tokens_half, rep_tokens_half], dim=-1).to(device)
+    return rep_tokens
+
 ```
 </details>
 
@@ -3346,6 +3359,17 @@ Can you think of a way to solve this problem? After you've considered this, you 
 
 We ablate with the mean of the ABC dataset rather than the IOI dataset. This removes the problem of averages still containing relevant information from solving the IOI task.
 
+```python
+    seq_len: int, 
+    batch: int = 1
+    '''
+    Generates a sequence of repeated random tokens (no start token).
+    '''
+    rep_tokens_half = t.randint(0, model.cfg.d_vocab, (batch, seq_len), dtype=t.int64)
+    rep_tokens = t.cat([rep_tokens_half, rep_tokens_half], dim=-1).to(device)
+    return rep_tokens
+
+```
 </details>
 
 One other complication - the sentences have different templates, and the positions of tokens like `S` and `IO` are not consistent across these templates (we avoided this problem in previous exercises by choosing a very small set of sentences, where all the important tokens had the same indices). An example of two templates with different positions:
@@ -3367,6 +3391,13 @@ In other words, when they performed ablation by patching in the output of a head
 
 
 ### Exercise - constructing the minimal circuit
+
+```c
+Difficulty: 🟠🟠🟠🟠🟠
+Importance: 🟠🟠⚪⚪⚪
+
+This exercise is expected to take a long time; at least an hour. It is probably the most challenging exercise in this notebook.
+```
 
 
 You now have enough information to perform ablation on your model, to get the minimal circuit. Below, you can try to implement this yourself.
@@ -3427,37 +3458,6 @@ where `hook_name` can be a string or a filter function mapping strings to boolea
 
 
 ```python
-# FLAT SOLUTION NOINDENT
-# 
-def get_heads_and_posns_to_keep(
-    means_dataset: IOIDataset,
-    model: HookedTransformer,
-    circuit: Dict[str, List[Tuple[int, int]]],
-    seq_pos_to_keep: Dict[str, str],
-) -> Dict[int, Bool[Tensor, "batch seq head"]]:
-    '''
-    Returns a dictionary mapping layers to a boolean mask giving the indices of the 
-    z output which *shouldn't* be mean-ablated.
-
-    The output of this function will be used for the hook function that does ablation.
-    '''
-    heads_and_posns_to_keep = {}
-    batch, seq, n_heads = len(means_dataset), means_dataset.max_len, model.cfg.n_heads
-
-    for layer in range(model.cfg.n_layers):
-
-        mask = t.zeros(size=(batch, seq, n_heads))
-
-        for (head_type, head_list) in circuit.items():
-            seq_pos = seq_pos_to_keep[head_type]
-            indices = means_dataset.word_idx[seq_pos]
-            for (layer_idx, head_idx) in head_list:
-                if layer_idx == layer:
-                    mask[:, indices, head_idx] = 1
-
-        heads_and_posns_to_keep[layer] = mask.bool()
-
-    return heads_and_posns_to_keep
 
     
 def hook_fn_mask_z(
@@ -3554,7 +3554,6 @@ def add_mean_ablation_hook(
     model.add_hook(lambda name: name.endswith("z"), hook_fn, is_permanent=is_permanent)
 
     return model
-# FLAT SOLUTION END
 
 ```
 
@@ -3786,6 +3785,13 @@ def add_mean_ablation_hook(
 
 ### Exercise - calculate minimality scores
 
+```c
+Difficulty: 🟠🟠🟠🟠🟠
+Importance: 🟠🟠⚪⚪⚪
+
+This exercise is expected to take a long time; at least an hour. It is probably the second most challenging exercise in this notebook.
+```
+
 
 We'll conclude this section by replicating figure 7 of the paper, which shows the minimality scores for the model.
 
@@ -3861,80 +3867,7 @@ def plot_minimal_set_results(minimality_scores: Dict[Tuple[int, int], float]):
 ```
 
 ```python
-# FLAT SOLUTION NOINDENT
 # YOUR CODE HERE - define the `minimality_scores` dictionary, to be used in the plot function given above
-def get_score(
-    model: HookedTransformer, 
-    ioi_dataset: IOIDataset, 
-    abc_dataset: IOIDataset,
-    K: Set[Tuple[int, int]],
-    C: Dict[str, List[Tuple[int, int]]],
-) -> float:
-    '''
-    Returns the value F(C \ K), where F is the logit diff, C is the
-    core circuit, and K is the set of circuit components to remove.
-    '''
-    C_excl_K = {k: [head for head in v if head not in K] for k, v in C.items()}
-    model = add_mean_ablation_hook(model, abc_dataset, C_excl_K, SEQ_POS_TO_KEEP)
-    logits = model(ioi_dataset.toks)
-    score = logits_to_ave_logit_diff_2(logits, ioi_dataset).item()
-
-    return score
-
-
-def get_minimality_score(
-    model: HookedTransformer,
-    ioi_dataset: IOIDataset,
-    abc_dataset: IOIDataset,
-    v: Tuple[int, int],
-    K: Set[Tuple[int, int]],
-    C: Dict[str, List[Tuple[int, int]]] = CIRCUIT,
-) -> float:
-    '''
-    Returns the value | F(C \ K_union_v) - F(C | K) |, where F is 
-    the logit diff, C is the core circuit, K is the set of circuit
-    components to remove, and v is a head (not in K).
-    '''
-    assert v not in K
-    K_union_v = K | {v}
-    C_excl_K_score = get_score(model, ioi_dataset, abc_dataset, K, C)
-    C_excl_Kv_score = get_score(model, ioi_dataset, abc_dataset, K_union_v, C)
-
-    return abs(C_excl_K_score - C_excl_Kv_score)
-
-
-def get_all_minimality_scores(
-    model: HookedTransformer,
-    ioi_dataset: IOIDataset = ioi_dataset,
-    abc_dataset: IOIDataset = abc_dataset,
-    k_for_each_component: Dict = K_FOR_EACH_COMPONENT
-) -> Dict[Tuple[int, int], float]:
-    '''
-    Returns dict of minimality scores for every head in the model (as 
-    a fraction of F(M), the logit diff of the full model).
-
-    Warning - this resets all hooks at the end (including permanent).
-    '''
-    # Get full circuit score F(M), to divide minimality scores by
-    model.reset_hooks(including_permanent=True)
-    logits = model(ioi_dataset.toks)
-    full_circuit_score = logits_to_ave_logit_diff_2(logits, ioi_dataset).item()
-
-    # Get all minimality scores, using the `get_minimality_score` function
-    minimality_scores = {}
-    for v, K in tqdm(k_for_each_component.items()):
-        score = get_minimality_score(model, ioi_dataset, abc_dataset, v, K)
-        minimality_scores[v] = score / full_circuit_score
-
-    model.reset_hooks(including_permanent=True)
-
-    return minimality_scores
-
-
-
-if MAIN:
-    minimality_scores = get_all_minimality_scores(model)
-    # FLAT SOLUTION END
 
 ```
 
@@ -4007,7 +3940,74 @@ The output of the third function can be plotted using the plotting function give
 <details>
 <summary>Solution</summary>
 
+```python
+def get_score(
+    model: HookedTransformer, 
+    ioi_dataset: IOIDataset, 
+    abc_dataset: IOIDataset,
+    K: Set[Tuple[int, int]],
+    C: Dict[str, List[Tuple[int, int]]],
+) -> float:
+    '''
+    Returns the value F(C \ K), where F is the logit diff, C is the
+    core circuit, and K is the set of circuit components to remove.
+    '''
+    C_excl_K = {k: [head for head in v if head not in K] for k, v in C.items()}
+    model = add_mean_ablation_hook(model, abc_dataset, C_excl_K, SEQ_POS_TO_KEEP)
+    logits = model(ioi_dataset.toks)
+    score = logits_to_ave_logit_diff_2(logits, ioi_dataset).item()
 
+    return score
+
+
+def get_minimality_score(
+    model: HookedTransformer,
+    ioi_dataset: IOIDataset,
+    abc_dataset: IOIDataset,
+    v: Tuple[int, int],
+    K: Set[Tuple[int, int]],
+    C: Dict[str, List[Tuple[int, int]]] = CIRCUIT,
+) -> float:
+    '''
+    Returns the value | F(C \ K_union_v) - F(C | K) |, where F is 
+    the logit diff, C is the core circuit, K is the set of circuit
+    components to remove, and v is a head (not in K).
+    '''
+    assert v not in K
+    K_union_v = K | {v}
+    C_excl_K_score = get_score(model, ioi_dataset, abc_dataset, K, C)
+    C_excl_Kv_score = get_score(model, ioi_dataset, abc_dataset, K_union_v, C)
+
+    return abs(C_excl_K_score - C_excl_Kv_score)
+
+
+def get_all_minimality_scores(
+    model: HookedTransformer,
+    ioi_dataset: IOIDataset = ioi_dataset,
+    abc_dataset: IOIDataset = abc_dataset,
+    k_for_each_component: Dict = K_FOR_EACH_COMPONENT
+) -> Dict[Tuple[int, int], float]:
+    '''
+    Returns dict of minimality scores for every head in the model (as 
+    a fraction of F(M), the logit diff of the full model).
+
+    Warning - this resets all hooks at the end (including permanent).
+    '''
+    # Get full circuit score F(M), to divide minimality scores by
+    model.reset_hooks(including_permanent=True)
+    logits = model(ioi_dataset.toks)
+    full_circuit_score = logits_to_ave_logit_diff_2(logits, ioi_dataset).item()
+
+    # Get all minimality scores, using the `get_minimality_score` function
+    minimality_scores = {}
+    for v, K in tqdm(k_for_each_component.items()):
+        score = get_minimality_score(model, ioi_dataset, abc_dataset, v, K)
+        minimality_scores[v] = score / full_circuit_score
+
+    model.reset_hooks(including_permanent=True)
+
+    return minimality_scores
+```
 </details>
 
 
@@ -4019,7 +4019,7 @@ Note - your results won't be exactly the same as the paper's, because of random 
 """, unsafe_allow_html=True)
 
 
-def section_5():
+def section_6():
 
     st.sidebar.markdown(r"""
 
@@ -4041,7 +4041,7 @@ def section_5():
 
     st.markdown(r"""
 
-# 5️⃣ Bonus / exploring anomalies
+# 6️⃣ Bonus / exploring anomalies
 
 
 > ##### Learning objectives
@@ -4121,6 +4121,13 @@ Note that this is a superficial study of whether something is an induction head 
 
 
 ### Exercise - validate prev token heads via patching
+
+```c
+Difficulty: 🟠🟠⚪⚪⚪
+Importance: 🟠🟠⚪⚪⚪
+
+This just involves performing a specific kind of patching, with functions you've already written.
+```
 
 The paper mentions that heads `2.2` and `4.11` are previous token heads. Hopefully you already validated this in the previous section by plotting the previous token scores (in your replication of Figure 18). But this time, you'll perform a particular kind of path patching to prove that these heads are functioning as previous token heads, in the way implied by our circuit diagram.
 
@@ -4263,27 +4270,15 @@ if MAIN:
     # Runs the model, temporarily adds caching hooks and then removes *all* hooks after running, including the ablation hook.
     ablated_logits, ablated_cache = model.run_with_cache(ioi_dataset.toks)
     rprint("\n".join([
-        f"                            Original logit diff: {original_average_logit_diff:.4f}",
-        f"Direct Logit Attribution of top name mover head: {per_head_logit_diffs[top_layer, top_head]:.4f}",
-        f"   Naive prediction of post ablation logit diff: {original_average_logit_diff - per_head_logit_diffs[top_layer, top_head]:.4f}",
-        f"      Logit diff after ablating L{top_layer}H{top_head}: {logits_to_ave_logit_diff_2(ablated_logits):.4f}",
+        f"{original_average_logit_diff:.4f} = Original logit diff",
+        f"{per_head_logit_diffs[top_layer, top_head]:.4f} = Direct Logit Attribution of top name mover head",
+        f"{original_average_logit_diff - per_head_logit_diffs[top_layer, top_head]:.4f} = Naive prediction of post ablation logit diff",
+        f"{logits_to_ave_logit_diff_2(ablated_logits):.4f} = Logit diff after ablating L{top_layer}H{top_head}",
     ]))
 
 ```
 
-```python
-
-if MAIN:
-    make_table(
-        cols = [
-            "Original logit diff", "Direct Logit Attribution of top name mover head", "Naive prediction of post ablation logit diff", f"Logit diff after ablating L{top_layer}H{top_head}",
-            original_average_logit_diff, per_head_logit_diffs[top_layer, top_head]
-        ]
-    )
-
-```
-
-What's going on here? We calculate the logit diff for our full model, and how much of that is coming directly from head `9.9`. Given this, we might guess that when we ablate this head, the logit diff will drop down to `3.07768 - 1.7230 = 1.3538`. Instead, we find that the logit diff is `2.8116`, in other words it drops much less than we expected.
+What's going on here? We calculate the logit diff for our full model, and how much of that is coming directly from head `9.9`. Given this, we come up with an estimate for what the logit diff will fall to when we ablate this head. In fact, performance is **much** better than this naive prediction.
 
 Why is this happening? As before, we can look at the direct logit attribution of each head to get a sense of what's going on.
 
@@ -4397,16 +4392,19 @@ We use the `gen_flipped_prompts` method to generate each of these datasets:
 ```python
 
 if MAIN:
-    datasets = [
-        [(0, 0), "original", ioi_dataset],
-        [(1, 0), "random token", ioi_dataset.gen_flipped_prompts("ABB->CDD, BAB->DCD")],
-        [(2, 0), "inverted token", ioi_dataset.gen_flipped_prompts("ABB->BAA, BAB->ABA")],
-        [(0, 1), "inverted position", ioi_dataset.gen_flipped_prompts("ABB->BAB, BAB->ABB")],
-        [(1, 1), "inverted position, random token", ioi_dataset.gen_flipped_prompts("ABB->DCD, BAB->CDD")],
-        [(2, 1), "inverted position, inverted token", ioi_dataset.gen_flipped_prompts("ABB->ABA, BAB->BAA")],
+    datasets: List[Tuple[Tuple, str, IOIDataset]] = [
+        ((0, 0), "original", ioi_dataset),
+        ((1, 0), "random token", ioi_dataset.gen_flipped_prompts("ABB->CDD, BAB->DCD")),
+        ((2, 0), "inverted token", ioi_dataset.gen_flipped_prompts("ABB->BAA, BAB->ABA")),
+        ((0, 1), "inverted position", ioi_dataset.gen_flipped_prompts("ABB->BAB, BAB->ABB")),
+        ((1, 1), "inverted position, random token", ioi_dataset.gen_flipped_prompts("ABB->DCD, BAB->CDD")),
+        ((2, 1), "inverted position, inverted token", ioi_dataset.gen_flipped_prompts("ABB->ABA, BAB->BAA")),
     ]
 
 ```
+
+*Note - the purpose of the type annotation for `datasets` is so that, when we iterate through datasets, the type checker can identify the third item in each iterate as an `IOIDataset`, and autocomplete methods for us.*
+
 
 ```python
 
@@ -4484,6 +4482,15 @@ Let's dig a little deeper. Rather than just looking at the S-inhibition heads co
 
 
 ### Exercise - decompose S-Inhibition heads
+
+```c
+Difficulty: 🟠🟠⚪⚪⚪
+Importance: 🟠🟠🟠⚪⚪
+
+You should spend up to 10-15 minutes on this exercise.
+
+This involves a lot of duplicating code from above.
+```
 
 Make the same plot as above, but after intervening on each of the S-inhibition heads individually. 
 
@@ -4647,7 +4654,7 @@ Here is a collection of links for further reading, which haven't already been me
 
 
 func_page_list = [
-    (section_0, '🏠 Home'),     (section_1, '1️⃣ Model & Task Setup'),     (section_2, '2️⃣ Logit Attribution'),     (section_3, '3️⃣ Activation Patching'),     (section_4, '4️⃣ Path Patching'),     (section_5, '5️⃣ Bonus / exploring anomalies'), 
+    (section_0, "🏠 Home"),     (section_1, "1️⃣ Model & Task Setup"),     (section_2, "2️⃣ Logit Attribution"),     (section_3, "3️⃣ Activation Patching"),     (section_4, "4️⃣ Path Patching"),     (section_5, "5️⃣ Paper Replication"),     (section_6, "6️⃣ Bonus / exploring anomalies"), 
 ]
 
 func_list = [func for func, page in func_page_list]

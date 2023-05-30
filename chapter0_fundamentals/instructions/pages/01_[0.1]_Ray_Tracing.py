@@ -52,7 +52,7 @@ def section_0():
     <li class='margtop'><a class='contents-el' href='#triangle-coordinates'>Triangle Coordinates</a></li>
     <li><ul class="contents">
         <li><a class='contents-el' href='#triangle-ray-intersection'>Triangle-Ray Intersection</a></li>
-        <li><a class='contents-el' href='#exercise-implement-triangle-line-intersects'><b>Exercise</b> - implement <code>triangle_line_intersects</code></a></li>
+        <li><a class='contents-el' href='#exercise-implement-triangle-ray-intersects'><b>Exercise</b> - implement <code>triangle_ray_intersects</code></a></li>
     </ul></li>
     <li class='margtop'><a class='contents-el' href='#single-triangle-rendering'>Single-Triangle Rendering</a></li>
     <li><ul class="contents">
@@ -499,7 +499,6 @@ def intersect_ray_1d(ray: t.Tensor, segment: t.Tensor) -> bool:
 ### Aside - typechecking
 
 
-
 Typechecking is a useful habit to get into. It's not strictly necessary, but it can be a great help when you're debugging.
 
 One good way to typecheck in PyTorch is with the `jaxtyping` library. In this library, we can use objects like `Float`, `Int`, `Bool`, etc object to specify the shape and data type of a tensor (or `Shaped` if we don't care about the data type).
@@ -540,7 +539,7 @@ Jaxtyping has many other useful features, for example:
 * Dimensions can be named *and* fixed, e.g. `x: Float[Tensor, "b=3"], y: Float[Tensor, "b"]` will raise an error if `x` and `y` don't *both* have shape `(3,)`
 * You can even use these objects for inline assert statements, e.g. `assert isinstance(x, Float[Tensor, "3 b"])` asserts that `x` is a 2D tensor of type float, with first dimension `3`.
 
-You can find more features of jaxtyping [here](https://github.com/google/jaxtyping/blob/main/API.md).
+You can find more features of jaxtyping [here](https://docs.kidger.site/jaxtyping/).
 
 Overall, type-checking is a really useful tool to have at your disposal, because it can help you quickly catch bugs in your code (and it helps your code be explicit and readable, both to possible collaborators / pair programming partners, and to your future self!). 
 
@@ -990,7 +989,7 @@ $$
 We can therefore find the coordinates `s`, `u`, `v` of the intersection point by solving the linear system above.
 
 
-### Exercise - implement `triangle_line_intersects`
+### Exercise - implement `triangle_ray_intersects`
 
 ```c
 Difficulty: 🟠🟠🟠⚪⚪
@@ -999,7 +998,7 @@ Importance: 🟠🟠🟠⚪⚪
 You should spend up to 15-20 minutes on this exercise.
 ```
 
-Using `torch.linalg.solve` and `torch.stack`, implement `triangle_line_intersects(A, B, C, O, D)`.
+Using `torch.linalg.solve` and `torch.stack`, implement `triangle_ray_intersects(A, B, C, O, D)`.
 
 A few tips:
 

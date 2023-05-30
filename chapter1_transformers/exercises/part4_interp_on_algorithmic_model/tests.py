@@ -3,6 +3,7 @@ from typing import Callable
 import torch as t
 from torch import Tensor
 from jaxtyping import Float, Int
+import einops
 from transformer_lens import ActivationCache, HookedTransformer
 from part4_interp_on_algorithmic_model.brackets_datasets import BracketsDataset
 
@@ -70,16 +71,38 @@ def test_out_by_component_in_unbalanced_dir(out_by_component_in_unbalanced_dir: 
     import part4_interp_on_algorithmic_model.solutions as solutions
 
     out_by_components_seq0: Float[Tensor, "comp batch d_model"] = solutions.get_out_by_components(model, data)[:, :, 0, :]
-
     pre_final_ln_dir: Float[Tensor, "d_model"] = solutions.get_pre_final_ln_dir(model, data)
-
     out_by_component_in_unbalanced_dir_expected: Float[Tensor, "comp batch"] = out_by_components_seq0 @ pre_final_ln_dir
-
     out_by_component_in_unbalanced_dir_expected -= out_by_component_in_unbalanced_dir_expected[:, data.isbal].mean(dim=1).unsqueeze(1)
 
-    t.testing.assert_close(out_by_component_in_unbalanced_dir, out_by_component_in_unbalanced_dir_expected)
+    t.testing.assert_close(
+        out_by_component_in_unbalanced_dir, 
+        out_by_component_in_unbalanced_dir_expected
+    )
 
     print("All tests in `test_out_by_component_in_unbalanced_dir` passed!")
+
+# %%
+
+def test_out_by_component_in_pre_20_unbalanced_dir(out_by_component_in_pre_20_unbalanced_dir: Float[Tensor, "comp batch"], model: HookedTransformer, data: BracketsDataset):
+
+    import part4_interp_on_algorithmic_model.solutions as solutions
+
+    out_by_components_seq1: Float[Tensor, "comp batch d_model"] = solutions.get_out_by_components(model, data)[:, :, 1, :]
+    pre_layer2_outputs_seqpos1 = out_by_components_seq1[:-3]
+    out_by_component_in_pre_20_unbalanced_dir_expected = einops.einsum(
+        pre_layer2_outputs_seqpos1,
+        solutions.get_pre_20_dir(model, data),
+        "comp batch emb, emb -> comp batch",
+    )
+    out_by_component_in_pre_20_unbalanced_dir_expected -= out_by_component_in_pre_20_unbalanced_dir_expected[:, data.isbal].mean(-1, keepdim=True)
+
+    t.testing.assert_close(
+        out_by_component_in_pre_20_unbalanced_dir, 
+        out_by_component_in_pre_20_unbalanced_dir_expected
+    )
+
+    print("All tests in `test_out_by_component_in_pre_20_unbalanced_dir` passed!")
 
 # %%
 
@@ -151,8 +174,8 @@ def test_get_out_by_neuron_in_20_dir_less_memory(get_out_by_neuron_in_20_dir_les
 def test_get_q_and_k_for_given_input(get_q_and_k_for_given_input, model, tokenizer):
     import part4_interp_on_algorithmic_model.solutions as solutions
     parens = "()"
-    q, k = get_q_and_k_for_given_input(model, tokenizer, parens, 0, 0)
-    q_expected, k_expected = solutions.get_q_and_k_for_given_input(model, tokenizer, parens, 0, 0)
+    q, k = get_q_and_k_for_given_input(model, tokenizer, parens, 0)
+    q_expected, k_expected = solutions.get_q_and_k_for_given_input(model, tokenizer, parens, 0)
     t.testing.assert_close(q, q_expected)
     t.testing.assert_close(k, k_expected)
     print("All tests in `test_get_q_and_k_for_given_input` passed!")
