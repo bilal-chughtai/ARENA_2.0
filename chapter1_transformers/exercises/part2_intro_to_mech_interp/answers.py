@@ -1,5 +1,7 @@
 # %%
-
+# autoreload
+%load_ext autoreload
+%autoreload 2
 import os
 import sys
 import plotly.express as px
@@ -857,9 +859,173 @@ def decompose_attn_scores(decomposed_q: t.Tensor, decomposed_k: t.Tensor) -> t.T
 
     The [i, j, 0, 0]th element is y_i @ W_QK @ y_j^T (so the sum along both first axes are the attention scores)
     '''
-    print(decomposed_q.shape)
-    print(decomposed_k.shape)
+    return einops.einsum(decomposed_q, decomposed_k, "n_headsq seqq d_head, n_headsk seqk d_head -> n_headsq n_headsk seqq seqk")
 
 
 if MAIN:
     tests.test_decompose_attn_scores(decompose_attn_scores, decomposed_q, decomposed_k)
+
+if MAIN:
+    decomposed_scores = decompose_attn_scores(decomposed_q, decomposed_k)
+    decomposed_stds = einops.reduce(
+        decomposed_scores, 
+        "query_decomp key_decomp query_pos key_pos -> query_decomp key_decomp", 
+        t.std
+    )
+
+    # First plot: attention score contribution from (query_component, key_component) = (Embed, L0H7)
+    imshow(
+        utils.to_numpy(t.tril(decomposed_scores[0, 9])), 
+        title="Attention score contributions from (query, key) = (embed, output of L0H7)",
+        width=800
+    )
+
+    # Second plot: std dev over query and key positions, shown by component
+    imshow(
+        utils.to_numpy(decomposed_stds), 
+        labels={"x": "Key Component", "y": "Query Component"},
+        title="Standard deviations of attention score contributions (by key and query component)", 
+        x=component_labels, 
+        y=component_labels,
+        width=800
+    )
+# %%
+def find_K_comp_full_circuit(
+    model: HookedTransformer,
+    prev_token_head_index: int,
+    ind_head_index: int
+) -> FactoredMatrix:
+    '''
+    Returns a (vocab, vocab)-size FactoredMatrix, with the first dimension being the query side and the second dimension being the key side (going via the previous token head)
+    '''
+    W_E = model.W_E
+    W_Q = model.W_Q[1, ind_head_index]
+    W_K = model.W_K[1, ind_head_index]
+    W_O = model.W_O[0, prev_token_head_index]
+    W_V = model.W_V[0, prev_token_head_index]
+
+    W_QK = FactoredMatrix(W_Q, W_K.T)
+    W_OV = FactoredMatrix(W_V, W_O)
+
+    return W_E @ W_QK @ W_OV.T @ W_E.T
+
+
+
+if MAIN:
+    prev_token_head_index = 7
+    ind_head_index = 4
+    K_comp_circuit = find_K_comp_full_circuit(model, prev_token_head_index, ind_head_index)
+
+    tests.test_find_K_comp_full_circuit(find_K_comp_full_circuit, model)
+
+    print(f"Fraction of tokens where the highest activating key is the same token: {top_1_acc(K_comp_circuit.T):.4f}")
+
+# %%
+def get_comp_score(
+    W_A: Float[Tensor, "in_A out_A"], 
+    W_B: Float[Tensor, "out_A out_B"]
+) -> float:
+    '''
+    Return the composition score between W_A and W_B.
+    '''
+    W_AB = W_A @ W_B
+    return t.sqrt(W_AB.pow(2).sum() / (W_A.pow(2).sum() * W_B.pow(2).sum())).item()
+
+
+if MAIN:
+    tests.test_get_comp_score(get_comp_score)
+
+# Get all QK and OV matrices
+
+if MAIN:
+    W_QK = model.W_Q @ model.W_K.transpose(-1, -2)
+    W_OV = model.W_V @ model.W_O
+
+    # Define tensors to hold the composition scores
+    composition_scores = {
+        "Q": t.zeros(model.cfg.n_heads, model.cfg.n_heads).to(device),
+        "K": t.zeros(model.cfg.n_heads, model.cfg.n_heads).to(device),
+        "V": t.zeros(model.cfg.n_heads, model.cfg.n_heads).to(device),
+    }
+
+
+    for i in range(model.cfg.n_heads):
+        for j in range(model.cfg.n_heads):
+            composition_scores["Q"][i, j] = get_comp_score(W_OV[0, i], W_QK[1, j])
+            composition_scores["K"][i, j] = get_comp_score(W_OV[0, i], W_QK[1, j].T)
+            composition_scores["V"][i, j] = get_comp_score(W_OV[0, i], W_OV[1, j])
+
+    for comp_type in "QKV":
+        plot_comp_scores(model, composition_scores[comp_type], f"{comp_type} Composition Scores").show()
+# %%
+def generate_single_random_comp_score() -> float:
+    '''
+    Write a function which generates a single composition score for random matrices
+    '''
+    W_Q = t.empty(model.cfg.d_head, model.cfg.d_model)
+    W_K = t.empty(model.cfg.d_head, model.cfg.d_model)
+    W_V = t.empty(model.cfg.d_head, model.cfg.d_model)
+    W_O = t.empty(model.cfg.d_head, model.cfg.d_model)
+    nn.init.kaiming_uniform_(W_Q, a=np.sqrt(5))
+    nn.init.kaiming_uniform_(W_K, a=np.sqrt(5))
+    nn.init.kaiming_uniform_(W_V, a=np.sqrt(5))
+    nn.init.kaiming_uniform_(W_O, a=np.sqrt(5))
+
+    W_QK = W_Q @ W_K.T
+    W_OV = W_V @ W_O.T
+
+    return get_comp_score(W_QK, W_OV)
+
+if MAIN:
+    n_samples = 300
+    comp_scores_baseline = np.zeros(n_samples)
+    for i in tqdm(range(n_samples)):
+        comp_scores_baseline[i] = generate_single_random_comp_score()
+    print("\nMean:", comp_scores_baseline.mean())
+    print("Std:", comp_scores_baseline.std())
+    hist(
+        comp_scores_baseline, 
+        nbins=50, 
+        width=800, 
+        labels={"x": "Composition score"}, 
+        title="Random composition scores"
+    )
+
+if MAIN:
+    baseline = comp_scores_baseline.mean()
+    for comp_type, comp_scores in composition_scores.items():
+        plot_comp_scores(model, comp_scores, f"{comp_type} Composition Scores", baseline=baseline).show()
+
+# %%
+def ablation_induction_score(prev_head_index: Optional[int], ind_head_index: int) -> float:
+    '''
+    Takes as input the index of the L0 head and the index of the L1 head, and then runs with the previous token head ablated and returns the induction score for the ind_head_index now.
+    '''
+
+    def ablation_hook(v, hook):
+        if prev_head_index is not None:
+            v[:, :, prev_head_index] = 0.0
+        return v
+
+    def induction_pattern_hook(attn, hook):
+        hook.ctx[prev_head_index] = attn[0, ind_head_index].diag(-(seq_len - 1)).mean()
+
+    model.run_with_hooks(
+        rep_tokens,
+        fwd_hooks=[
+            (utils.get_act_name("v", 0), ablation_hook),
+            (utils.get_act_name("pattern", 1), induction_pattern_hook)
+        ],
+    )
+    return model.blocks[1].attn.hook_pattern.ctx[prev_head_index].item()
+
+
+
+if MAIN:
+    baseline_induction_score = ablation_induction_score(None, 4)
+    print(f"Induction score for no ablations: {baseline_induction_score:.5f}\n")
+    for i in range(model.cfg.n_heads):
+        new_induction_score = ablation_induction_score(i, 4)
+        induction_score_change = new_induction_score - baseline_induction_score
+        print(f"Ablation score change for head {i:02}: {induction_score_change:+.5f}")
+# %%
