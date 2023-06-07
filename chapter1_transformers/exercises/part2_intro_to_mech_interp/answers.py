@@ -1028,4 +1028,4 @@ if MAIN:
         new_induction_score = ablation_induction_score(i, 4)
         induction_score_change = new_induction_score - baseline_induction_score
         print(f"Ablation score change for head {i:02}: {induction_score_change:+.5f}")
-# %%
+
