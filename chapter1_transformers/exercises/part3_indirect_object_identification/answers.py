@@ -884,3 +884,136 @@ calculate_and_show_scatter_embedding_vs_attn(*nmh)
 
 nnmh = (11, 10)
 calculate_and_show_scatter_embedding_vs_attn(*nnmh)
+
+#%%
+def get_copying_scores(
+    model: HookedTransformer,
+    k: int = 5,
+    names: list = NAMES
+) -> Float[Tensor, "2 layer-1 head"]:
+    '''
+    Gets copying scores (both positive and negative) as described in page 6 of the IOI paper, for every (layer, head) pair in the model.
+
+    Returns these in a 3D tensor (the first dimension is for positive vs negative).
+
+    Omits the 0th layer, because this is before MLP0 (which we're claiming acts as an extended embedding).
+    '''
+    name_tokens = model.to_tokens(names, prepend_bos=False)
+    name_embeds: Float[Tensor, "batch 1 d_model"] = model.W_E[name_tokens]
+    name_mlp: Float[Tensor, "batch 1 d_model"]= model.blocks[0].mlp(model.blocks[0].ln2(name_embeds))
+    
+    out = t.empty(2, model.cfg.n_layers - 1, model.cfg.n_heads)
+    for layer in range(1, model.cfg.n_layers):
+        for head in range(model.cfg.n_heads):
+
+            W_O = model.W_O[layer, head]
+            W_V = model.W_V[layer, head]
+            W_OV = W_V @ W_O
+            
+            name_mlp_out_pos = model.ln_final(name_mlp @ W_OV) @ model.W_U
+            name_mlp_out_pos = name_mlp_out_pos.squeeze(1)
+
+            top_k_pos = t.topk(name_mlp_out_pos, k=k, dim=1).indices
+            positive_copying_score = (top_k_pos == name_tokens).any(dim=1).float().mean()
+
+            name_mlp_out_neg = model.ln_final(-name_mlp @ W_OV) @ model.W_U
+            name_mlp_out_neg = name_mlp_out_neg.squeeze(1)
+
+            top_k_neg = t.topk(name_mlp_out_neg, k=k, dim=1).indices
+            negative_copying_score = (top_k_neg == name_tokens).any(dim=1).float().mean()
+
+            out[0, layer-1, head] = positive_copying_score
+            out[1, layer-1, head] = negative_copying_score
+
+    return out
+            
+
+
+
+
+copying_results = get_copying_scores(model)
+
+imshow(
+    copying_results, 
+    facet_col=0, 
+    facet_labels=["Positive copying scores", "Negative copying scores"],
+    title="Copying scores of attention heads' OV circuits",
+    width=800
+)
+
+
+heads = {"name mover": [(9, 9), (10, 0), (9, 6)], "negative name mover": [(10, 7), (11, 10)]}
+
+for i, name in enumerate(["name mover", "negative name mover"]):
+    make_table(
+        title=f"Copying Scores ({name} heads)",
+        colnames=["Head", "Score"],
+        cols=[
+            list(map(str, heads[name])) + ["[dark_orange bold]Average"],
+            [f"{copying_results[i, layer-1, head]:.2%}" for (layer, head) in heads[name]] + [f"[dark_orange bold]{copying_results[i].mean():.2%}"]
+        ]
+    )
+
+# %%
+t.cuda.empty_cache()
+
+def get_attn_scores(
+    model: HookedTransformer, 
+    seq_len: int, 
+    batch: int, 
+    head_type: Literal["duplicate", "prev", "induction"]
+):
+    '''
+    Returns attention scores for sequence of duplicated tokens, for every head.
+    '''
+    toks = t.randint(0, model.cfg.d_vocab, (batch, seq_len))
+    rep_toks = t.cat([toks, toks], dim=1)
+
+    head_type_to_offset_dict = {
+        "duplicate": seq_len,
+        "prev": 1,
+        "induction": seq_len - 1
+    }
+
+    offset = head_type_to_offset_dict[head_type]
+
+    out = t.empty(model.cfg.n_layers, model.cfg.n_heads)
+
+    logits, cache = model.run_with_cache(rep_toks, names_filter = lambda name: name.endswith("pattern"))
+
+    for layer in range(model.cfg.n_layers):
+        for head in range(model.cfg.n_heads):
+            attn_scores = cache["pattern", layer][:, head]
+            out[layer, head] = attn_scores.diagonal(offset=offset, dim1=-1, dim2=-2).mean()
+    
+    return out
+
+
+def plot_early_head_validation_results(seq_len: int = 50, batch: int = 50):
+    '''
+    Produces a plot that looks like Figure 18 in the paper.
+    '''
+    head_types = ["duplicate", "prev", "induction"]
+
+    results = t.stack([
+        get_attn_scores(model, seq_len, batch, head_type=head_type)
+        for head_type in head_types
+    ])
+
+    imshow(
+        results,
+        facet_col=0,
+        facet_labels=[
+            f"{head_type.capitalize()} token attention prob.<br>on sequences of random tokens"
+            for head_type in head_types
+        ],
+        labels={"x": "Head", "y": "Layer"},
+        width=1300,
+    )
+
+
+
+model.reset_hooks()
+plot_early_head_validation_results()
+
+# %%
